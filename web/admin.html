@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1020"><title>Starix Console · MCP 管理中心</title>
+<link rel="stylesheet" href="/admin/app.css"><script src="/admin/app.js" defer></script></head><body>
+<svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></symbol>
+<symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>
+<symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3m6 0h4"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3m10-10h-3M5 12H2m17-7-2 2M7 17l-2 2M5 5l2 2m10 10 2 2"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9A7 7 0 0 1 18 7l2 5M4 12l2 5a7 7 0 0 0 12.5-2"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 20 6v5c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+<symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 17v3h16v-3"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></symbol>
+<symbol id="i-logout" viewBox="0 0 24 24"><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5m5-4 4-4-4-4m4 4H9"/></symbol>
+</svg>
+<section id="auth-screen" class="auth-screen">
+  <div class="auth-orb orb-a"></div><div class="auth-orb orb-b"></div>
+  <div class="auth-card"><div class="logo-large"><span class="brand-mark">✳</span> starix<span class="brand-lite">/console</span></div>
+    <div class="auth-eyebrow"><span class="live-dot"></span> PRIVATE CONTROL PLANE</div>
+    <h1>你的 MCP，<br><span class="gradient-text">尽在掌控。</span></h1>
+    <p>独立管理运行状态、调用记录、工作区与安全策略。</p>
+    <form id="login-form" class="login-form"><label for="login-password">管理员密码</label>
+    <input id="login-password" type="password" autocomplete="current-password" placeholder="输入管理密码" required maxlength="500">
+    <button class="btn btn-primary btn-full">安全登录 <svg class="icon"><use href="#i-arrow"></use></svg></button>
+    <div class="auth-error" id="login-error" role="alert"></div></form>
+    <div class="auth-footer"><svg class="icon"><use href="#i-shield"></use></svg> 独立身份验证 · 会话保护 · 仅授权操作</div>
+  </div><div class="auth-corner">STARIX DEV ENVIRONMENT <span>© 2026</span></div>
+</section>
+<div id="shell" class="shell" hidden>
+<aside class="sidebar"><div class="side-top"><div class="side-brand"><span class="brand-mark">✳</span>starix<span class="brand-lite">/console</span></div><div class="side-kicker">DEVELOPER INFRASTRUCTURE</div></div>
+<nav class="side-nav" aria-label="管理导航"><div class="nav-heading">工作台</div>
+<button class="nav-link active" data-nav="overview"><svg class="icon"><use href="#i-grid"></use></svg> 总览 <span class="nav-chevron">›</span></button>
+<button class="nav-link" data-nav="activity"><svg class="icon"><use href="#i-activity"></use></svg> MCP 调用记录 <span class="nav-chevron">›</span></button>
+<button class="nav-link" data-nav="jobs"><svg class="icon"><use href="#i-terminal"></use></svg> 任务与批处理 <span class="nav-chevron">›</span></button>
+<button class="nav-link" data-nav="files"><svg class="icon"><use href="#i-folder"></use></svg> 文件管理 <span class="nav-chevron">›</span></button>
+<div class="nav-heading heading-gap">服务器</div>
+<button class="nav-link" data-nav="settings"><svg class="icon"><use href="#i-settings"></use></svg> 系统设置 <span class="nav-chevron">›</span></button></nav>
+<div class="sidebar-foot"><div class="server-chip"><span class="live-dot"></span><span><strong>Gateway online</strong><small>连接安全 · 自托管</small></span></div>
+<div class="side-account"><span class="avatar">A</span><span><strong>Administrator</strong><small>完全访问权限</small></span><button class="icon-btn" id="logout" title="退出登录"><svg class="icon"><use href="#i-logout"></use></svg></button></div></div></aside>
+<main class="main"><header class="topbar"><div class="topbar-left"><button class="mobile-menu icon-btn" id="mobile-menu">☰</button><span class="breadcrumbs">STARIX / <span id="top-crumb">总览</span></span></div>
+<div class="topbar-right"><span class="top-time" id="top-time"></span><span class="top-divider"></span><span class="status-label"><span class="live-dot"></span> SYSTEM ONLINE</span><button class="icon-btn refresh-button" id="refresh" title="刷新"><svg class="icon"><use href="#i-refresh"></use></svg></button></div></header>
+<div class="page-container">
+<section class="page active" id="page-overview">
+<div class="page-heading"><div><div class="eyebrow">MISSION CONTROL / OVERVIEW</div><h1>工作区总览<span class="heading-period">.</span></h1><p>实时了解 MCP 网关、资源占用与开发任务。</p></div><div class="updated" id="overview-updated">等待更新…</div></div>
+<div class="hero-banner"><div class="hero-glow"></div><div class="hero-content"><div class="hero-pill"><span class="live-dot"></span> ALL SYSTEMS OPERATIONAL</div><h2>每一次调用，<br>都清晰可见。</h2><p>从 ChatGPT 到你的服务器，所有关键工作流集中管理。</p><button class="hero-link" data-jump="activity">查看调用活动 <svg class="icon"><use href="#i-arrow"></use></svg></button></div><div class="hero-graphic"><span class="ring ring-one"></span><span class="ring ring-two"></span><span class="ring ring-three"></span><span class="hero-core">✳</span></div></div>
+<div class="stats-grid">
+<div class="stat-card"><span class="stat-label">历史 MCP 调用 <span class="stat-glyph">↗</span></span><strong class="stat-number" id="metric-calls">—</strong><small>当前保留的记录数量</small><span class="stat-foot">ALL TIME / RETAINED</span></div>
+<div class="stat-card"><span class="stat-label">最近 15 分钟 <span class="stat-glyph">⌁</span></span><strong class="stat-number" id="metric-recent">—</strong><small>近期调用次数</small><span class="stat-foot">LIVE ACTIVITY</span></div>
+<div class="stat-card"><span class="stat-label">进行中的任务 <span class="stat-glyph">◉</span></span><strong class="stat-number" id="metric-active">—</strong><small>运行中作业及批处理</small><span class="stat-foot">EXECUTION STATUS</span></div>
+<div class="stat-card"><span class="stat-label">近期错误 <span class="stat-glyph">!</span></span><strong class="stat-number" id="metric-errors">—</strong><small>最近 15 分钟调用错误</small><span class="stat-foot">ERROR MONITORING</span></div></div>
+<div class="dashboard-grid"><section class="panel chart-panel"><div class="panel-head"><div><div class="eyebrow">TRAFFIC ANALYTICS</div><h3>MCP 活跃趋势</h3></div><span class="panel-subtitle">最近 2 小时 · 5 分钟间隔</span></div><div id="activity-chart" class="bar-chart"></div><div class="chart-baseline"><span>120 分钟前</span><span>60 分钟前</span><span>现在</span></div></section>
+<section class="panel system-panel"><div class="panel-head"><div><div class="eyebrow">RESOURCE MONITOR</div><h3>系统资源</h3></div><span class="soft-pill">LIVE</span></div>
+<div class="system-resource"><div class="resource-head"><span>CPU 占用</span><strong id="system-cpu">—</strong></div><div class="progress-track"><span id="bar-cpu"></span></div><small id="system-load">—</small></div>
+<div class="system-resource"><div class="resource-head"><span>内存占用</span><strong id="system-memory">—</strong></div><div class="progress-track"><span id="bar-memory"></span></div><small id="system-memory-details">—</small></div>
+<div class="system-resource"><div class="resource-head"><span>磁盘占用</span><strong id="system-disk">—</strong></div><div class="progress-track"><span id="bar-disk"></span></div><small id="system-disk-details">—</small></div><div class="system-footer"><span>网关自身内存</span><strong id="system-rss">—</strong></div></section></div>
+<section class="panel table-panel"><div class="panel-head"><div><div class="eyebrow">RECENT EVENTS</div><h3>最新 MCP 调用</h3></div><button class="link-button" data-jump="activity">查看全部 <svg class="icon"><use href="#i-arrow"></use></svg></button></div><div class="table-scroll"><table><thead><tr><th>工具名称</th><th>来源</th><th>状态</th><th>耗时</th><th>调用时间</th></tr></thead><tbody id="recent-calls"></tbody></table></div></section></section>
+<section class="page" id="page-activity"><div class="page-heading"><div><div class="eyebrow">AUDIT TRAIL / MCP</div><h1>调用记录<span class="heading-period">.</span></h1><p>追踪工具调用的状态、耗时和 Trace ID。不保存参数或密钥。</p></div><button class="btn btn-outline" id="activity-reload"><svg class="icon"><use href="#i-refresh"></use></svg> 刷新记录</button></div>
+<section class="panel table-panel"><div class="list-toolbar"><div class="search-input"><svg class="icon"><use href="#i-search"></use></svg><input id="activity-query" placeholder="筛选工具名称或 Trace ID"></div><select id="activity-status" class="select"><option value="">全部状态</option><option value="running">进行中</option><option value="succeeded">成功</option><option value="error">错误</option></select><span class="table-count" id="activity-count"></span></div>
+<div class="table-scroll"><table><thead><tr><th>工具</th><th>来源</th><th>状态</th><th>耗时</th><th>时间</th><th>Trace ID</th></tr></thead><tbody id="activity-rows"></tbody></table></div><div class="table-footer"><span id="activity-pager-label"></span><div class="pagination"><button class="btn btn-compact btn-outline" id="activity-prev">上一页</button><button class="btn btn-compact btn-outline" id="activity-next">下一页</button></div></div></section></section>
+<section class="page" id="page-jobs"><div class="page-heading"><div><div class="eyebrow">EXECUTION / OPERATIONS</div><h1>任务与批处理<span class="heading-period">.</span></h1><p>查看持久化作业、批处理及执行状态。可取消运行中的任务。</p></div><button class="btn btn-outline" id="jobs-reload"><svg class="icon"><use href="#i-refresh"></use></svg> 刷新</button></div>
+<div class="small-stats"><div class="mini-stat"><span>作业总数</span><strong id="jobs-total">—</strong></div><div class="mini-stat"><span>运行中的作业</span><strong id="jobs-active">—</strong></div><div class="mini-stat"><span>批处理总数</span><strong id="batches-total">—</strong></div></div>
+<section class="panel table-panel"><div class="panel-head"><h3>命令作业 <span class="heading-tag">JOBS</span></h3></div><div class="table-scroll"><table><thead><tr><th>作业 ID</th><th>状态</th><th>工作目录</th><th>退出码</th><th>创建时间</th><th>操作</th></tr></thead><tbody id="jobs-rows"></tbody></table></div></section>
+<section class="panel table-panel separate-panel"><div class="panel-head"><h3>工作区批处理 <span class="heading-tag">BATCHES</span></h3></div><div class="table-scroll"><table><thead><tr><th>执行 ID</th><th>状态</th><th>目录</th><th>创建时间</th><th>操作</th></tr></thead><tbody id="batches-rows"></tbody></table></div></section></section>
+<section class="page" id="page-files"><div class="page-heading"><div><div class="eyebrow">WORKSPACE / FILE EXPLORER</div><h1>文件管理<span class="heading-period">.</span></h1><p>工作区浏览、文本编辑、文件上传下载和整理。</p></div><span class="soft-pill" id="file-permission-badge">WORKSPACE ROOT</span></div>
+<section class="panel file-panel"><div class="files-toolbar"><div class="file-path" id="file-breadcrumbs"></div><div class="file-buttons"><button class="btn btn-compact btn-outline" id="file-up">↑ 上级</button><button class="btn btn-compact btn-outline write-action" id="file-newfolder"><svg class="icon"><use href="#i-folder"></use></svg> 新建文件夹</button><button class="btn btn-compact btn-outline write-action" id="file-newfile"><svg class="icon"><use href="#i-plus"></use></svg> 新建文件</button><button class="btn btn-compact btn-primary write-action" id="file-upload-button"><svg class="icon"><use href="#i-upload"></use></svg> 上传</button><input id="file-upload" type="file" multiple hidden></div></div>
+<div class="file-table-head"><div class="search-input"><svg class="icon"><use href="#i-search"></use></svg><input id="file-search" placeholder="筛选当前目录"></div><span class="table-count" id="file-count"></span></div>
+<div class="table-scroll"><table class="file-table"><thead><tr><th>名称</th><th>文件大小</th><th>修改时间</th><th>操作</th></tr></thead><tbody id="file-rows"></tbody></table></div><div class="file-note"><svg class="icon"><use href="#i-shield"></use></svg> 仅允许访问工作区内部路径，拒绝符号链接。目录须清空后才可删除。</div></section></section>
+<section class="page" id="page-settings"><div class="page-heading"><div><div class="eyebrow">CONTROL PLANE / CONFIGURATION</div><h1>服务设置<span class="heading-period">.</span></h1><p>调整 MCP 权限、OAuth 认证、接入密钥与资源上限。</p></div><span class="soft-pill"><svg class="icon"><use href="#i-shield"></use></svg> SECURED</span></div>
+<form id="settings-form"><div class="settings-grid"><div class="settings-main">
+<section class="panel settings-panel">
+<div class="panel-head"><div><div class="eyebrow">CORE DEVELOPMENT WORKFLOW</div><h3>工具模式与网页端发现</h3>
+<p class="setting-hint">默认只暴露自研核心开发工具，保留双向附件传输。设置会在服务端拦截已禁用操作。</p></div></div>
+<label class="field" for="tool-profile"><span>默认工具集</span>
+<select id="tool-profile" class="select">
+<option value="core">Core - 核心开发（16 个）</option>
+<option value="interactive">Interactive - 核心 + DC 交互终端</option>
+<option value="legacy">Legacy - DC 全量兼容（按需启用）</option>
+</select></label>
+<div class="notice-box core-discovery-note"><strong>ChatGPT 工具快照不会自动更新</strong>
+<p>部署或切换模式后，请在 ChatGPT 工作区的应用管理中刷新、审核并发布工具更新。下方是服务端的实际清单，不代表当前聊天已加载。</p></div>
+<div id="core-tool-manifest" class="details-list"></div>
+<button id="copy-tool-manifest" type="button" class="btn btn-outline btn-compact">复制服务端清单</button>
+<p class="field-note">文件修改统一使用 workspace_execute；短命令使用 job_start + wait_ms；长任务使用持久化 ID 继续读取。</p>
+</section>
+
+<section class="panel settings-panel"><div class="panel-head"><div><div class="eyebrow">ACCESS CONTROL</div><h3>能力与权限</h3><p class="setting-hint">关闭后将阻止新的相关 MCP 操作。</p></div></div><div id="permission-switches" class="switch-list"></div></section>
+<section class="panel settings-panel oauth-policy-panel">
+<div class="panel-head"><div><div class="eyebrow">OAUTH / AUTHORIZATION</div><h3>OAuth 认证与有效期</h3>
+<p class="setting-hint">OAuth 采用 Authorization Code + PKCE S256，颁发随机 Access Token，不使用 JWT 签名密钥或 client_secret。</p></div></div>
+<div class="oauth-stat-grid">
+<div class="oauth-stat"><span>当前有效令牌</span><strong id="oauth-token-count">—</strong></div>
+<div class="oauth-stat"><span>可刷新会话</span><strong id="oauth-refresh-count">—</strong></div>
+<div class="oauth-stat"><span>已注册客户端</span><strong id="oauth-client-count">—</strong></div>
+<div class="oauth-stat"><span>待兑换授权码</span><strong id="oauth-code-count">—</strong></div>
+</div>
+<div id="oauth-policy-fields" class="settings-fields oauth-fields"></div>
+<div id="oauth-policy-switches" class="switch-list oauth-policy-switches"></div>
+<p class="field-note">有效期调整仅影响新签发的凭据。Refresh Token 可轮换且单独保存哈希；Access Token 是否跨重启仍由独立开关控制。长期凭据请谨慎设置。</p>
+</section>
+<section class="panel settings-panel">
+<div class="panel-head"><div><div class="eyebrow">CREDENTIAL VAULT</div><h3>独立接入密钥</h3>
+<p class="setting-hint">生成可直接作为 Bearer 使用的服务器接入密钥，与 OAuth PKCE 客户端的公开 client_id 不同。</p></div></div>
+<div id="oauth-credential-meta" class="oauth-credential-meta">正在加载凭据状态…</div>
+<div class="oauth-key-form">
+<div class="field"><label for="oauth-key-days">新密钥有效期</label><span><input id="oauth-key-days" type="number" min="1" max="365" value="90" step="1"><small class="field-unit">天</small></span></div>
+<div class="field"><label for="oauth-key-password">确认管理员密码</label><span><input id="oauth-key-password" type="password" autocomplete="off" placeholder="生成或撤销密钥时必填"></span></div>
+</div>
+<div class="oauth-actions">
+<button class="btn btn-primary btn-compact" type="button" id="oauth-key-rotate">生成 / 轮换密钥</button>
+<button class="btn btn-outline btn-compact danger-button" type="button" id="oauth-key-revoke">撤销独立密钥</button>
+</div>
+<div class="oauth-one-time" id="oauth-one-time" hidden>
+<strong>仅此一次显示新密钥。请立即复制并安全保存！</strong>
+<textarea id="oauth-issued-value" class="textarea" rows="2" readonly spellcheck="false" aria-label="仅显示一次的新密钥"></textarea>
+<div class="oauth-actions"><button class="btn btn-outline btn-compact" type="button" id="oauth-key-copy">复制密钥</button><button class="btn btn-outline btn-compact" type="button" id="oauth-key-hide">隐藏密钥</button></div>
+</div>
+<p class="field-note">旧独立密钥在轮换后立即失效。若保留环境变量中的静态 Bearer 密钥，它仍可继续访问，直到在上方关闭对应开关。密钥不会在页面刷新后再次显示。</p>
+</section>
+<section class="panel settings-panel">
+<div class="panel-head"><div><div class="eyebrow">OAUTH CLIENT REGISTRY</div><h3>已注册 OAuth 客户端</h3><p class="setting-hint">撤销客户端会同时清理该客户端的授权码及 Access Token。</p></div>
+<button class="btn btn-outline btn-compact" id="oauth-status-refresh" type="button">刷新</button></div>
+<div class="table-scroll oauth-clients"><table><thead><tr><th>客户端</th><th>Client ID</th><th>回调地址</th><th>操作</th></tr></thead><tbody id="oauth-client-rows"><tr><td colspan="4">正在加载…</td></tr></tbody></table></div>
+<div class="oauth-actions oauth-danger-zone"><button class="btn btn-outline btn-compact danger-button" id="oauth-revoke-tokens" type="button">撤销全部 OAuth Access Token</button><span class="field-note">不会撤销环境变量 Bearer 或独立接入密钥。</span></div>
+</section>
+<section class="panel settings-panel"><div class="panel-head"><div><div class="eyebrow">RESOURCE LIMITS</div><h3>限制与配额</h3><p class="setting-hint">更改对新请求生效，已启动的独立任务保留原配置。</p></div></div><div id="limit-fields" class="settings-fields"></div></section>
+<section class="panel settings-panel"><div class="panel-head"><div><div class="eyebrow">TOOL-LEVEL PERMISSIONS</div><h3>单项工具授权</h3><p class="setting-hint">禁用的工具将从 tools/list 隐藏，实际调用也被拒绝。</p></div></div><div id="tool-toggles" class="tools-grid"></div></section>
+<section class="panel settings-panel"><div class="panel-head"><div><div class="eyebrow">NETWORK TRUST</div><h3>附件来源白名单</h3><p class="setting-hint">每行一个 HTTPS origin，也支持 https://*.blob.core.windows.net。</p></div></div><textarea id="download-origins" class="textarea" rows="5" spellcheck="false"></textarea><div class="field-note">仍强制 DNS / 公网 IP 校验，并拒绝重定向。</div></section>
+</div><div class="settings-side">
+<section class="panel settings-panel"><div class="eyebrow">SERVER DETAILS</div><h3>连接配置</h3><div id="connection-details" class="details-list"></div><div class="notice-box"><strong>需要重启的设置</strong><p>监听地址、端口、OAuth 回调白名单、Desktop Commander 参数和系统服务身份由部署环境管理。</p></div></section>
+<section class="panel settings-panel"><div class="eyebrow">ADMIN SESSION</div><h3>管理员会话</h3>
+<p class="setting-hint">与 OAuth 客户端认证相互独立。新登录的管理会话使用更新后的有效期。</p>
+<div id="security-fields" class="settings-fields security-fields"></div>
+<p class="field-note">管理员密码仍由部署环境的 MCP_ADMIN_PASSWORD 或 MCP_OWNER_PASSWORD 管理，后台不显示现有密码。</p></section>
+<section class="panel settings-panel"><div class="eyebrow">SECURITY NOTES</div><h3>配置说明</h3><div class="guide-point"><span class="guide-number">01</span><p>文件大小、并发和速率在服务端强制执行。</p></div><div class="guide-point"><span class="guide-number">02</span><p>后台采用独立会话、CSRF 校验与密码限流。</p></div><div class="guide-point"><span class="guide-number">03</span><p>权限变更不会中断已运行的任务，必要时可在任务页取消。</p></div></section>
+</div></div>
+<div class="settings-savebar"><span id="settings-changed">设置会保存在服务器私有状态目录</span><div><button type="button" id="settings-reset" class="btn btn-outline">撤销未保存更改</button><button type="submit" id="settings-save" class="btn btn-primary">保存并应用设置 <svg class="icon"><use href="#i-arrow"></use></svg></button></div></div></form></section>
+</div></main></div>
+<div class="modal-backdrop" id="editor-modal" hidden><div class="editor-dialog"><div class="editor-top"><div><div class="eyebrow">FILE EDITOR / UTF-8</div><h3 id="editor-title">文件编辑</h3></div><button class="icon-btn" id="editor-close">✕</button></div><textarea id="editor-content" spellcheck="false" placeholder="在这里编辑文本文件…"></textarea><div class="editor-bottom"><span>上限 1 MiB · UTF-8</span><div><button class="btn btn-outline" id="editor-cancel">取消</button><button class="btn btn-primary" id="editor-save">保存文件</button></div></div></div></div>
+<div class="toast-area" id="toasts" role="status" aria-live="polite"></div></body></html>

@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+*.pyc
+__pycache__/
+.chatgpt-mcp/
+workspace/
+dist/

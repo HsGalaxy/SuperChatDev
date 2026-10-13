@@ -1,0 +1,20 @@
+{
+  "name": "superchatdev",
+  "version": "0.3.1",
+  "private": true,
+  "type": "module",
+  "description": "Purpose-built MCP development runtime for ChatGPT Web with native file handoff and durable jobs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test --test-concurrency=1 --test-reporter=spec test/*.test.mjs && python3 test/build_security.py",
+    "check": "for f in src/*.mjs web/*.js; do node --check \"$f\" || exit 1; done; python3 -c \"import pathlib; [compile(p.read_text(),str(p),'exec') for d in ['src','scripts','deploy'] for p in pathlib.Path(d).glob('*.py')]\""
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HsGalaxy/SuperChatDev.git"
+  }
+}

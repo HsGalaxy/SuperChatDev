@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check source
+        run: npm run check
+      - name: Runtime and security tests
+        run: npm test
+      - name: Installer regression tests
+        run: python3 -m unittest discover -s test -p 'test_installer.py'
+      - name: Install plan (no root changes)
+        run: |
+          ./install.sh --dry-run --mode fresh --domain mcp.yourdomain.org --proxy caddy
+          ./install.sh --dry-run --mode upgrade
