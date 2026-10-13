@@ -22,7 +22,8 @@ jobs:
       - name: Runtime and security tests
         run: npm test
       - name: Installer regression tests
-        run: python3 -m unittest discover -s test -p 'test_installer*.py'
+        run: |
+          python3 -m unittest discover -s test -p 'test_installer*.py'
           python3 -m unittest discover -s test -p 'test_bootstrap.py'
       - name: Check both languages, local and streamed bootstrap (offline)
         run: |
