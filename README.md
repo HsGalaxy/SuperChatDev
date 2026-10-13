@@ -1,95 +1,121 @@
 # SuperChatDev
 
-**A purpose-built MCP development runtime for ChatGPT's native web interface.**
+**专为 ChatGPT 原生网页版打造的 MCP 开发环境。**
+不是 All-in-One Agent 框架，不是 IDE，也不是万能工具箱。
 
-[Installation guide (中文)](docs/INSTALLATION.md) · [Quickstart](docs/QUICKSTART.md) · [Architecture](docs/ARCHITECTURE.md) · [Tool contracts](docs/TOOLS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
+[**简体中文**](README.md) · [English](README.en.md) · [安装指南](docs/zh-CN/INSTALLATION.md) · [使用与工具](docs/zh-CN/TOOLS.md) · [常见问题](docs/zh-CN/TROUBLESHOOTING.md)
 
-SuperChatDev turns **ChatGPT Web + your own Linux VPS** into a practical development workflow. It is **not** an all-in-one AI platform, a general IDE, or a generic collection of MCP tools. Its goal is specific: make reading code, editing projects, running tests, and exchanging files feel reliable **inside the native ChatGPT web chat**.
+让 ChatGPT 在原生聊天窗口里完成一整个开发任务：上传 ZIP → 读取和搜索代码 → 修改文件 → 构建与测试 → 检查 Git Diff → 直接回传可下载的成品。
 
-```text
-ChatGPT native upload
-        |
-  file_import -> file_unpack
-        |
-  fs_list / fs_search / fs_read
-        |
-  workspace_execute (edit -> build -> test)    job_start (single command)
-        |                                        |
-  workspace_review                           job_read (if still running)
-        |
-   file_export
-        |
-ChatGPT downloadable artifact
+## 🚀 一条命令安装
+
+在 **Debian / Ubuntu** 的 SSH 终端里运行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh | sudo bash
 ```
 
-## Why SuperChatDev?
+**不用克隆仓库。默认中文。** 第一步可以选择 `1. 简体中文`（默认）或 `2. English`，接下来按提示选择新装/升级、输入域名、配置 HTTPS、可选安装 Desktop Commander。安装器生成凭据、设置 systemd 和持久化工作区，并进行健康检查。
 
-- **Native ChatGPT attachment handoff:** import original uploaded files into the VPS, unpack projects, and export results back to the conversation.
-- **Fast commands and durable jobs:** `job_start` waits up to **500ms by default**. Fast commands return output and exit status in one call; longer commands return a durable job ID.
-- **Integrated edit/test/review:** bounded source navigation, SHA-256-guarded file changes, dependency-aware batch execution, and read-only Git review.
-- **Built for the web client:** compact tool responses, pagination, retry IDs, OAuth with PKCE and rotating refresh tokens, and a small stable schema.
-- **Core-first tool surface:** 16 default tools, with **optional** Desktop Commander interactive/legacy profiles. No forced dependence on DC.
+<details><summary>English installer / 英文安装</summary>
 
-## Quick start (Linux)
+```bash
+curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh | sudo bash -s -- --lang en
+```
 
-Requirements: Debian or Ubuntu with systemd, Python 3, a domain pointing to your VPS, and Node.js 22+. The wizard can offer to install Node 22 through a signed APT repository if you explicitly allow it.
+</details>
+
+> **安全提示：** 一键命令会从公开 GitHub 仓库下载脚本并以 root 运行。请先确认仓库与脚本可信。希望先审查再执行，可以使用下方手动方式。正式部署需要真实 HTTPS 域名、DNS 和正常的 GitHub 网络连接；不能仅靠本机安装完成 ChatGPT 端的连接授权。
+
+### 想先检查脚本？
+
+```bash
+curl -fsSLo superchatdev-install.sh https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh
+less superchatdev-install.sh
+sudo bash superchatdev-install.sh
+```
+
+### 已经安装过？
+
+执行同一条命令，向导会检测到现有安装并默认选择**升级**，保留 OAuth 凭据、配置、工作区和现有代理设置。建议操作前备份重要项目和数据。可先用以下方式只查看安装计划：
 
 ```bash
 git clone https://github.com/HsGalaxy/SuperChatDev.git
 cd SuperChatDev
-
-# Preview the install before making privileged changes
-./install.sh --dry-run --mode fresh --domain mcp.yourdomain.org --proxy caddy
-
-# Open the interactive installer in your own root/sudo SSH session
-sudo ./install.sh
+./install.sh --dry-run --mode upgrade
 ```
 
-Choose **Fresh install** for a new host or **Upgrade** for an existing SuperChatDev installation. The installer offers managed Caddy HTTPS or your own reverse proxy, creates an unprivileged service and persistent workspace, and keeps OAuth and admin credentials in root-protected files. Optional Desktop Commander is an opt-in extra.
+## 为什么专为 ChatGPT Web 设计？
 
-After installation:
+| 特点 | 说明 |
+| --- | --- |
+| 原生聊天附件 | `file_import` 导入用户上传的文件；`file_export` 将服务器生成的结果返回聊天 |
+| **500ms 快速执行** | `job_start` 对短命令一次返回结果；长命令返回可继续查询的任务 ID |
+| 持久化工作区 | 默认 `/var/lib/chatgpt-dev-mcp/workspace`，适合长期代码项目 |
+| 完整开发闭环 | 文件导航、SHA-256 防并发覆盖、补丁、测试、Git 只读审查 |
+| OAuth 与管理后台 | PKCE、轮换刷新令牌、细粒度策略和独立 Web 设置页 |
+| 精简工具数量 | 16 个核心工具；可选 DC 交互终端，默认不暴露冗余工具 |
 
-| Endpoint | URL |
-|---|---|
-| MCP for ChatGPT | `https://YOUR_DOMAIN/mcp` |
-| Admin dashboard | `https://YOUR_DOMAIN/admin/` |
-| Local health | `http://127.0.0.1:18787/health` (default port) |
+```text
+ChatGPT 网页端
+    │ 原生附件上传
+    ▼
+file_import → file_unpack
+    ▼
+fs_list / fs_search / fs_read
+    ▼
+workspace_execute ── job_start
+(修改 / 测试)         (单命令；短任务直接返回)
+    ▼
+workspace_review
+    ▼
+file_export
+    │
+    ▼
+聊天中直接下载完整项目
+```
 
-Add the HTTPS MCP endpoint to ChatGPT. When changing the tool catalog or schema, you may need to **refresh, review, and publish** the app actions in ChatGPT; the web client can cache older definitions.
+## 连接 ChatGPT
 
-Full instructions: **[Installation](docs/INSTALLATION.md)** · **[Web-client specifics](docs/TOOLS.md)** · **[Configuration](docs/CONFIGURATION.md)**.
+安装完成后，把 `https://你的域名/mcp` 添加到 ChatGPT 的 MCP 应用配置中。后台位于 `https://你的域名/admin/`，本机默认健康检查为 `http://127.0.0.1:18787/health`。按客户端要求完成 OAuth 登录。服务器升级了工具 Schema 后，可能还需要在 ChatGPT 工作区刷新、审核并发布工具定义。
 
-## The 16 Core tools
+## 核心工具（16 个）
 
-| Workflow | Tools |
-|---|---|
-| Environment guide | `dev_get_guide` |
-| Native attachment transfer | `file_import`, `file_unpack`, `file_export` |
-| File navigation | `fs_list`, `fs_read`, `fs_search` |
-| Single commands & durable processes | `job_start`, `job_read`, `job_list`, `job_cancel` |
-| Multi-step development | `workspace_execute`, `workspace_read`, `workspace_list`, `workspace_cancel` |
-| Git review | `workspace_review` |
+| 任务 | 工具 |
+| --- | --- |
+| 环境信息 | `dev_get_guide` |
+| 上传 / 解压 / 下载 | `file_import`、`file_unpack`、`file_export` |
+| 源码查找与阅读 | `fs_list`、`fs_read`、`fs_search` |
+| 命令执行与任务恢复 | `job_start`、`job_read`、`job_list`、`job_cancel` |
+| 多步骤开发与测试 | `workspace_execute`、`workspace_read`、`workspace_list`、`workspace_cancel` |
+| Git 只读审查 | `workspace_review` |
 
-**Do not confuse a Job with a Workspace execution:** `job_start` is for one command. It returns immediately after the command completes (up to 500ms default wait) or yields a durable ID. `workspace_execute` is for coordinated multi-step edits, builds and tests. `file_import` and `file_export` intentionally have **different** parameters because they transfer files in opposite directions.
+`job_start` 用于**单条命令**，默认最多等 500ms；`workspace_execute` 用于**有依赖关系的多步骤修改/构建/测试**，并不是重复的 exec 工具。
 
-## Operating and developing
+## 文档
+
+| 中文（默认） | English |
+| --- | --- |
+| [快速开始](docs/zh-CN/QUICKSTART.md) | [Quick start](docs/QUICKSTART.md) |
+| [安装与升级](docs/zh-CN/INSTALLATION.md) | [Installation](docs/INSTALLATION.md) |
+| [架构](docs/zh-CN/ARCHITECTURE.md) | [Architecture](docs/ARCHITECTURE.md) |
+| [配置](docs/zh-CN/CONFIGURATION.md) | [Configuration](docs/CONFIGURATION.md) |
+| [工具接口](docs/zh-CN/TOOLS.md) | [Tool contracts](docs/TOOLS.md) |
+| [日常维护](docs/zh-CN/OPERATIONS.md) | [Operations](docs/OPERATIONS.md) |
+| [安全说明](docs/zh-CN/SECURITY.md) | [Security](docs/SECURITY.md) |
+| [故障排查](docs/zh-CN/TROUBLESHOOTING.md) | [Troubleshooting](docs/TROUBLESHOOTING.md) |
+| [参与开发](docs/zh-CN/DEVELOPMENT.md) | [Development](docs/DEVELOPMENT.md) |
+
+## 本地开发与测试
 
 ```bash
+git clone https://github.com/HsGalaxy/SuperChatDev.git
+cd SuperChatDev
 npm run check
 npm test
-python3 -m unittest discover -s test -p 'test_installer.py'
-./install.sh --check                    # read-only installation diagnostics
+python3 -m unittest discover -s test -p 'test_installer*.py'
 ```
 
-- Runtime: Linux + Node.js 22; no third-party npm dependencies for Core.
-- Release: **v0.3.1**. Historic service and storage directory names such as `chatgpt-dev-mcp` are preserved for compatibility.
-- Upgrade: checks release hashes and preserves existing server credentials, state, unit configuration, proxy and workspace. A failed health check triggers best-effort rollback; review backups before attempting manual recovery.
-- Security: single owner; **not a multi-tenant sandbox**. Arbitrary shell execution has the runner's Linux permissions. Keep the HTTP backend bound to loopback and expose only HTTPS.
-- Browser constraints: an MCP server cannot suppress ChatGPT approval prompts, guarantee attachment delivery across all clients, or force the client to refresh OAuth or published tool schemas.
-- Persistence: jobs may outlive a gateway process restart; a machine reboot does **not** automatically resume processes.
+**适用范围：** 单一受信任所有者；不是多租户执行沙箱。MCP 不能绕过 ChatGPT 网页端的平台级授权弹窗，也不能保证客户端一定支持 OAuth 自动刷新。Job 可在网关进程重启后恢复查询，但机器重启不会自动继续执行命令。
 
-For implementation details see [Architecture](docs/ARCHITECTURE.md), [Operations](docs/OPERATIONS.md), [Security](docs/SECURITY.md), and [Contributing](CONTRIBUTING.md).
-
-## License
-
-[MIT](LICENSE). See the existing license file for copyright and terms.
+**许可证：** [MIT](LICENSE) · **当前版本：** v0.3.1（中文/英文安装文档增强）

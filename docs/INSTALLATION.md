@@ -1,20 +1,68 @@
-# 安装与升级指南
+# Installation and upgrades (English)
 
-## 要求
-Debian/Ubuntu + systemd，Node.js >=22、Python 3；对外需要 HTTPS 域名。首次安装需要 root SSH，不要从 MCP 工具里运行安装器。
+[English README](../README.en.md) · [中文](zh-CN/INSTALLATION.md)
 
-## 新装
-将完整发行版 ZIP 解压到服务器；先执行 `./install.sh --dry-run --mode fresh --domain mcp.your-domain.org --proxy caddy` 预览，随后执行 `sudo ./install.sh`，选 Fresh install，输入实际域名，选择 Caddy 自动 HTTPS 或现有反向代理，选择是否安装 DC。已安装实例请选 Upgrade，不要覆盖。
+## Prerequisites
 
-Caddy 自动证书需要域名 DNS 指向服务器且 80/443 可达。若选 External，需要自行反向代理 `127.0.0.1:18787`，启用 HTTPS，注意 OAuth 及签名链接不要记录到访问日志。不要将 HTTP 原始端口暴露到公网。
+- Debian or Ubuntu with systemd and root/sudo access in an SSH terminal.
+- A real domain name pointed to your server and reachable public HTTPS.
+- Internet access to `raw.githubusercontent.com` and `codeload.github.com`.
+- Python 3, tar, curl, and Node.js >=22. The downloaded bootstrap can set up Python/tar with APT if root is available; the guided installer can offer signed NodeSource setup with your approval.
 
-## 完成后
-检查 `systemctl status chatgpt-dev-mcp`、`curl http://127.0.0.1:18787/health`。后台为 `https://域名/admin/`，MCP 为 `https://域名/mcp`。OAuth 与 Admin 密码由安装器生成，分别在 `/etc/chatgpt-dev-mcp/owner-password` 和 `/etc/chatgpt-dev-mcp/admin-password`，仅在 root SSH 中读取。
+## One-liner — no Git clone required
 
-ChatGPT 端添加 HTTPS MCP 服务后需要刷新、审核与发布工具清单；服务器可见的 16 个工具不意味着旧聊天的工具快照自动更新。
+```bash
+curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh | sudo bash -s -- --lang en
+```
 
-## 升级
-先运行 `./install.sh --dry-run --mode upgrade`，然后由 root 运行 `sudo ./install.sh` 选择 Upgrade。只替换受清单管理的运行时文件，保留私有状态、项目、服务 unit、HTTP 代理和已有凭据；文件更新前检查生产文件哈希，升级失败会尝试回滚。升级重启网关，可能暂时中断 ChatGPT 连接。安装过程的备份位于 `/var/backups/chatgpt-dev-mcp-installer`。
+Without `--lang en`, the language menu defaults to Simplified Chinese. You can still select English by entering `2` at the first prompt.
 
-## 诊断
-`./install.sh --check` 不改动文件。不要提交服务 `.env`、OAuth 密钥、备份与签名下载 URL。
+The bootstrap downloads the project archive via HTTPS, verifies safe archive paths, then runs the local Python wizard against the downloaded release. The installer checks the 31-file release manifest before making runtime changes. Remote code is run with root privileges: **review and trust the source before executing**.
+
+For script review:
+
+```bash
+curl -fsSLo superchatdev-install.sh https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh
+less superchatdev-install.sh
+sudo bash superchatdev-install.sh --lang en
+```
+
+## Fresh install
+
+Choose **Fresh install** and provide a DNS name. Choose **Managed Caddy** to configure automatic HTTPS certificates (requires working DNS and ports 80/443), or **Existing reverse proxy** if you already have Nginx/Caddy/another proxy terminating HTTPS.
+
+The backend binds to `127.0.0.1:18787` by default; don't expose it publicly. The wizard creates two low-privilege Linux service identities and separate owner/admin passwords protected under `/etc/chatgpt-dev-mcp/`. Projects live under `/var/lib/chatgpt-dev-mcp/workspace`, private state under `/var/lib/chatgpt-dev-mcp/state`. Optional Desktop Commander is disabled by default.
+
+## Upgrade without wiping data
+
+Run the same bootstrap command and choose **Upgrade**. Existing installations default to upgrade mode. The installer retains existing credentials, OAuth state, projects, systemd settings and reverse proxy configuration; it checks release digests and production baselines before applying runtime file updates. It backs up versioned files and private state and attempts rollback on health-check failure. Back up valuable data independently too.
+
+The MCP gateway restarts during an upgrade, potentially interrupting ChatGPT sessions. Older credentials may require reauthorization until the connected client supports refresh tokens.
+
+## Command-line options
+
+```bash
+# Preview planned actions without modifying system state
+./install.sh --mode fresh --domain mcp.yourdomain.org --proxy caddy --dry-run --lang en
+
+# Preview upgrade
+./install.sh --mode upgrade --dry-run --lang en
+
+# Read-only diagnostics
+./install.sh --mode check --lang en
+```
+
+For an actual unattended root installation, supply `--mode`, `--domain` for fresh install, your proxy selection, and `--yes`. A regular interactive install must have a real terminal.
+
+## Connect ChatGPT Web
+
+The installer prints `https://YOUR_DOMAIN/mcp` and `https://YOUR_DOMAIN/admin/`. Register the HTTPS MCP address in ChatGPT, complete OAuth, and refresh/review/publish tool actions as needed.
+
+Verify locally:
+
+```bash
+systemctl status chatgpt-dev-mcp --no-pager
+curl -fsS http://127.0.0.1:18787/health
+```
+
+[Configuration](CONFIGURATION.md) · [Operations](OPERATIONS.md) · [Troubleshooting](TROUBLESHOOTING.md)

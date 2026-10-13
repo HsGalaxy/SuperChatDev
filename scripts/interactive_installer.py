@@ -25,6 +25,10 @@ import time
 import urllib.error
 import urllib.request
 
+# When loaded through importlib or executed directly, resolve sibling i18n module.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from installer_lang import set_language, tr, error_message
+
 SOURCE = Path(__file__).resolve().parents[1]
 APP = Path("/opt/chatgpt-dev-mcp")
 VAR = Path("/var/lib/chatgpt-dev-mcp")
@@ -43,14 +47,14 @@ class InstallError(Exception):
     pass
 
 def step(message: str):
-    print("\n>>> " + message, flush=True)
+    print("\n>>> " + error_message(message), flush=True)
 
 def run(*argv: str, env: dict | None = None):
     print("+", " ".join(argv), flush=True)
     try:
         subprocess.run(argv, check=True, env=env)
     except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-        raise InstallError("Command failed: " + " ".join(argv)) from exc
+        raise InstallError(tr("Command failed: ") + " ".join(argv)) from exc
 
 def capture(*argv: str) -> str:
     try:
@@ -66,17 +70,17 @@ def confirm(prompt: str, default: bool = False) -> bool:
             return default
         if answer in ("yes", "y", "是"): return True
         if answer in ("no", "n", "否"): return False
-        print("Please enter y or n.")
+        print(tr("Please enter y or n."))
 
 def choose(prompt: str, options: list[tuple[str, str]], preferred: str) -> str:
     print(prompt)
     for key, label in options:
         print(f"  {key}. {label}")
     while True:
-        value = input(f"Choose [{preferred}]: ").strip() or preferred
+        value = input(tr("Choose [{default}]: ", default=preferred)).strip() or preferred
         if value in dict(options):
             return value
-        print("Unknown option.")
+        print(tr("Unknown option."))
 
 def validate_domain(value: str) -> str:
     value = value.strip().lower().rstrip(".")
@@ -349,29 +353,43 @@ def check_backend(port: int, version: str = VERSION):
         time.sleep(0.25 if attempt < 12 else 0.5)
     raise InstallError(f"Backend health check failed: expected {version} on 127.0.0.1:{port}")
 
+def inspect_exists(path: Path):
+    try:
+        return path.exists()
+    except OSError:
+        return tr("unknown (restricted)")
+
 def verify_nonsecret_setup():
     count = verify_release()
-    print(f"Release: {VERSION}, verified {count} file hashes")
-    print(f"OS: {distro()}, installed Node major: {node_version() or 'missing'}")
-    print("systemctl:", bool(shutil.which("systemctl")))
-    print("service exists:", UNIT.exists())
-    print("env file exists:", ENV_FILE.exists(), "(contents not displayed)")
-    print("credential files exist:", (ETC / "owner-password").exists(),
-          (ETC / "admin-password").exists(), "(contents not displayed)")
-    print("workspace exists:", (VAR / "workspace").is_dir())
+    print(tr("Release: {version}, verified {count} file hashes",
+             version=VERSION, count=count))
+    print(tr("OS: {os}, installed Node major: {node}",
+             os=distro(), node=node_version() or tr("missing")))
+    print(tr("systemctl:"), bool(shutil.which("systemctl")))
+    print(tr("service exists:"), UNIT.exists())
+    print(tr("env file exists:"), inspect_exists(ENV_FILE), tr("(contents not displayed)"))
+    print(tr("credential files exist:"), inspect_exists(ETC / "owner-password"),
+          inspect_exists(ETC / "admin-password"), tr("(contents not displayed)"))
+    print(tr("workspace exists:"), (VAR / "workspace").is_dir())
     if shutil.which("systemctl"):
-        print("service active:", capture("systemctl", "is-active", SERVICE))
+        print(tr("service active:"), capture("systemctl", "is-active", SERVICE))
     try:
         port = 18787
-        if ENV_FILE.exists():
-            for line in ENV_FILE.read_text().splitlines():
+        if inspect_exists(ENV_FILE) is True:
+            try:
+                # --check must work without root. Never require reading a
+                # root-only secret file merely to display diagnostics.
+                lines = ENV_FILE.read_text().splitlines()
+            except (OSError, PermissionError):
+                lines = []
+            for line in lines:
                 if line.startswith("PORT="):
-                    port = int(line.split("=",1)[1].strip().strip('"\u0027'))
+                    port = int(line.split("=",1)[1].strip().strip('"\\u0027'))
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as r:
             state=json.load(r)
-        print("local /health:", state.get("ok"),state.get("version"))
+        print(tr("local /health:"), state.get("ok"),state.get("version"))
     except Exception:
-        print("local /health: unreachable (no credentials were used)")
+        print(tr("local /health:"), tr("unreachable (no credentials were used)"))
 
 def port_available(port):
     with socket.socket() as sock:
@@ -490,8 +508,9 @@ def upgrade():
             rollback_release(backup)
             run("systemctl","restart",SERVICE)
         raise
-    print(f"\nUpgrade successful: v{VERSION}  |  http://127.0.0.1:{port}/health")
-    print("Protected backup:",backup)
+    print("\n" + tr("Upgrade successful: v{version}  |  http://127.0.0.1:{port}/health",
+                     version=VERSION,port=port))
+    print(tr("Protected backup:"),backup)
 
 def fresh(args):
     if UNIT.exists() or ENV_FILE.exists():
@@ -527,80 +546,118 @@ def fresh(args):
             run("systemctl","daemon-reload")
         if installed or (backup/"runtime/rollback.json").exists():
             rollback_release(backup)
-        print("Credentials and private state have NOT been printed or deleted.")
-        print("For troubleshooting, inspect", backup)
+        print(tr("Credentials and private state have NOT been printed or deleted."))
+        print(tr("For troubleshooting, inspect"), backup)
         raise
-    print("\nSUCCESS: Core MCP",VERSION)
-    print("MCP endpoint: https://"+domain+"/mcp")
-    print("Admin console: https://"+domain+"/admin/")
-    print("HTTPS mode:",args.proxy)
-    print("Domain DNS must resolve here and ports 80/443 must be reachable for Caddy TLS.")
-    print("Owner and admin passwords are stored separately in root-only files under",ETC)
-    print("To reveal a password locally, use a root SSH terminal; never paste secrets in chat.")
-    print("Private release backup:",backup)
-    print("Next: register the HTTPS MCP app in ChatGPT; refresh/review/publish its actions.")
+    print("\n" + tr("SUCCESS: Core MCP {version}", version=VERSION))
+    print(tr("MCP endpoint:"), "https://"+domain+"/mcp")
+    print(tr("Admin console:"), "https://"+domain+"/admin/")
+    print(tr("HTTPS mode:"), args.proxy)
+    print(tr("Domain DNS must resolve here and ports 80/443 must be reachable for Caddy TLS."))
+    print(tr("Owner and admin passwords are stored separately in root-only files under"), ETC)
+    print(tr("To reveal a password locally, use a root SSH terminal; never paste secrets in chat."))
+    print(tr("Private release backup:"), backup)
+    print(tr("Next: register the HTTPS MCP app in ChatGPT; refresh/review/publish its actions."))
 
 def main():
-    parser=argparse.ArgumentParser(description="Core MCP interactive install, upgrade and diagnostics")
-    parser.add_argument("--mode", choices=["fresh","upgrade","check"])
-    parser.add_argument("--domain",help="DNS name for new installs, not a URL")
-    parser.add_argument("--proxy",choices=["caddy","external"],default=None)
-    parser.add_argument("--port",type=int,default=18787)
-    parser.add_argument("--with-dc",action="store_true",help="Opt-in Desktop Commander installation")
-    parser.add_argument("--auto-node",action="store_true",help="Permit NodeSource signed APT setup if Node is old")
-    parser.add_argument("--yes",action="store_true",help="Confirm batch mode (requires --mode)")
-    parser.add_argument("--dry-run",action="store_true",help="Show a plan without touching host files")
+    parser=argparse.ArgumentParser(
+        description="SuperChatDev · 专为 ChatGPT 网页版设计的 MCP 开发环境 / ChatGPT Web MCP runtime")
+    parser.add_argument("--lang",choices=["zh","en"],default=None,
+                        help="界面语言 / UI language (default: zh)")
+    parser.add_argument("--mode", choices=["fresh","upgrade","check"],
+                        help="fresh 新装 / upgrade 升级 / check 检测")
+    parser.add_argument("--domain",help="公网域名 / public DNS hostname, not a URL")
+    parser.add_argument("--proxy",choices=["caddy","external"],default=None,
+                        help="HTTPS: managed Caddy or your existing reverse proxy")
+    parser.add_argument("--port",type=int,default=18787,
+                        help="本地端口 / loopback port")
+    parser.add_argument("--with-dc",action="store_true",
+                        help="同时安装可选 Desktop Commander / optional bridge")
+    parser.add_argument("--auto-node",action="store_true",
+                        help="允许从有签名的 NodeSource 源安装 Node 22+")
+    parser.add_argument("--yes",action="store_true",
+                        help="明确允许非交互安装（需同时提供 --mode）")
+    parser.add_argument("--dry-run",action="store_true",
+                        help="只打印安装计划，不修改系统 / non-destructive")
     args=parser.parse_args()
+
+    desired_lang = args.lang or os.environ.get("SUPERCHATDEV_LANG") or "zh"
+    set_language(desired_lang)
+    if (not args.lang and not os.environ.get("SUPERCHATDEV_LANG")
+            and sys.stdin.isatty() and args.mode is None and not args.dry_run):
+        print("\nSuperChatDev · 语言 / Language")
+        print("  1. 简体中文（默认）")
+        print("  2. English")
+        while True:
+            selected=input("请选择 / Choose [1]: ").strip() or "1"
+            if selected in ("1","2"): break
+            print("输入 1 或 2 / Enter 1 or 2")
+        set_language("zh" if selected=="1" else "en")
+
     if args.mode=="check":
         verify_nonsecret_setup();return 0
     if args.mode is None and not args.dry_run:
         if not sys.stdin.isatty():
-            raise InstallError("Interactive installer requires a TTY; use --mode, --domain and --yes for automation.")
-        print("\nCore MCP",VERSION,"| install wizard")
-        selection=choose("Choose operation",[("1","Fresh install on Debian/Ubuntu"),("2","Upgrade an existing installation"),
-                                              ("3","Read-only diagnostics"),("4","Quit")],"2" if UNIT.exists() else "1")
-        if selection=="4":return 0
-        if selection=="3":verify_nonsecret_setup();return 0
+            raise InstallError(
+                "Interactive installer requires a TTY; use --mode, --domain and --yes for automation.")
+        print("\nSuperChatDev",VERSION,"|",tr("Installer wizard"))
+        selection=choose(tr("Choose operation:"),[
+            ("1",tr("Fresh install on Debian/Ubuntu")),
+            ("2",tr("Upgrade an existing installation")),
+            ("3",tr("Read-only diagnostics")),
+            ("4",tr("Quit"))],"2" if UNIT.exists() else "1")
+        if selection=="4": return 0
+        if selection=="3": verify_nonsecret_setup(); return 0
         args.mode="fresh" if selection=="1" else "upgrade"
-    if args.mode is None:args.mode="fresh"
+    if args.mode is None: args.mode="fresh"
     if args.mode=="fresh":
         if not args.domain:
-            if args.dry_run:args.domain="mcp.my-domain.org"
-            elif sys.stdin.isatty():args.domain=input("Public MCP domain (e.g. mcp.yourdomain.org): ").strip()
-            else:raise InstallError("--domain is required for non-interactive installation")
-        validate_domain(args.domain); valid_port(args.port)
+            if args.dry_run: args.domain="mcp.my-domain.org"
+            elif sys.stdin.isatty():
+                args.domain=input(tr("Public MCP domain (e.g. mcp.yourdomain.org): ")).strip()
+            else:
+                raise InstallError("--domain is required for non-interactive installation")
+        validate_domain(args.domain)
+        valid_port(args.port)
         if not args.proxy:
-            if args.dry_run or not sys.stdin.isatty():args.proxy="external"
-            else:args.proxy={"1":"caddy","2":"external"}[choose("HTTPS proxy:",[
-                ("1","Managed Caddy (automated ACME TLS, ports 80/443)"),
-                ("2","Existing proxy (you will configure HTTPS separately)")],"1")]
+            if args.dry_run or not sys.stdin.isatty(): args.proxy="external"
+            else:
+                args.proxy={"1":"caddy","2":"external"}[choose(tr("HTTPS proxy:"),[
+                    ("1",tr("Managed Caddy (automated ACME TLS, ports 80/443)")),
+                    ("2",tr("Existing proxy (you will configure HTTPS separately)"))],"1")]
         if not args.dry_run and sys.stdin.isatty():
-            if not args.with_dc:args.with_dc=confirm("Install optional Desktop Commander bridge?",False)
+            if not args.with_dc:
+                args.with_dc=confirm(tr("Install optional Desktop Commander bridge?"), False)
             if node_version()<22 and not args.auto_node:
-                args.auto_node=confirm("Node >=22 missing. Configure signed NodeSource APT repo?",False)
+                args.auto_node=confirm(
+                    tr("Node >=22 missing. Configure signed NodeSource APT repo?"), False)
     count=verify_release()
-    print(f"\nCore MCP v{VERSION}; release checksum verified: {count} files")
-    print("Action:",args.mode, "| target:",APP)
+    print("\n"+tr("Core MCP v{version}; release checksum verified: {count} files",
+                 version=VERSION,count=count))
+    print(tr("Action:"),args.mode,"|",tr("target:"),APP)
     if args.mode=="fresh":
-        print("Domain:",args.domain,"| HTTPS proxy:",args.proxy,"| backend port:",args.port,
-              "| optional DC:",args.with_dc,"| permit NodeSource:",args.auto_node)
-        print("Will create two unprivileged service accounts, protected credentials and persistent workspace.")
-    else:print("Upgrade runtime only; keep existing systemd unit, credentials, state and proxy.")
+        print(tr("Domain:"),args.domain,"|",tr("HTTPS proxy:"),args.proxy,
+              "|",tr("backend port:"),args.port,"|",tr("optional DC:"),args.with_dc,
+              "|",tr("permit NodeSource:"),args.auto_node)
+        print(tr("Will create two unprivileged service accounts, protected credentials and persistent workspace."))
+    else:
+        print(tr("Upgrade runtime only; keep existing systemd unit, credentials, state and proxy."))
     if args.dry_run:
-        print("DRY RUN: No packages, users, configs, files or services were changed.")
+        print(tr("DRY RUN: No packages, users, configs, files or services were changed."))
         return 0
     if os.geteuid()!=0:
         raise InstallError("Run the actual installation as root in your SSH terminal.")
     if not args.yes and not sys.stdin.isatty():
         raise InstallError("A non-interactive privileged install requires explicit --yes.")
-    if not args.yes and not confirm("Proceed with privileged changes?",False):
-        print("Cancelled.");return 0
-    if args.mode=="fresh":fresh(args)
-    else:upgrade()
+    if not args.yes and not confirm(tr("Proceed with privileged changes?"),False):
+        print(tr("Cancelled."));return 0
+    if args.mode=="fresh": fresh(args)
+    else: upgrade()
     return 0
 
 if __name__=="__main__":
-    try:sys.exit(main())
+    try:
+        sys.exit(main())
     except (InstallError, ValueError, OSError) as error:
-        print("\nERROR:",error,file=sys.stderr)
+        print("\n"+tr("ERROR:"),error_message(str(error)),file=sys.stderr)
         sys.exit(1)

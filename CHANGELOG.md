@@ -1,14 +1,21 @@
 # Changelog
 
+## Unreleased — One-line installer and bilingual documentation
+
+- Added streaming GitHub bootstrap: `curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh | sudo bash`. Local checkouts still run without downloading source.
+- Default installer language is **Simplified Chinese**, with English selection in the menu or `--lang en`.
+- Documented installation, configuration, tool APIs, operations, security and troubleshooting in both languages, with Chinese as the GitHub landing-page default.
+- Added offline streamed installer tests, pseudo-terminal interaction testing, malicious archive rejection and non-root diagnostic fixes.
+
 ## 0.3.1 — Fast jobs, OAuth continuity and initial public distribution
 
-- `job_start` waits up to 500ms by default and can return fast command output in a single tool call.
-- Rotating, one-time, client-bound OAuth refresh tokens with hash-only persistence, revocation and settings.
-- Added dedicated ChatGPT Web docs, guarded installer flows, regression tests and GitHub CI.
+- `job_start` waits up to 500ms by default, returning fast command output in the first call; long tasks remain durable.
+- Rotating, client-bound OAuth refresh tokens with hash-only persistence, configurable lifetime, revocation and restart recovery.
+- Admin console exposes refresh policy and session counts.
+- Public repository with interactive installer, regression tests and GitHub CI.
 
 ## 0.3.0 — Core Flow
 
-- Reduced the default surface to 16 purpose-built Core tools.
-- Added bounded source list/read/search and read-only Git review.
-- Added guarded multi-step edits/tests, better permission checks, retries and job recovery.
-- Retained native ChatGPT file import and export; DC is optional.
+- Reduced default tool exposure to 16 native tools, with optional DC profiles.
+- Added bounded `fs_list`, `fs_read`, `fs_search` and read-only Git `workspace_review`.
+- Preserved native ChatGPT attachment upload/download and strengthened permission checks, job retry handling and recovery.

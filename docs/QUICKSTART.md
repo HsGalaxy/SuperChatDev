@@ -1,7 +1,29 @@
 # Quick start
 
-Core MCP 0.3.1 is a single-owner remote development runtime intended for native ChatGPT web. On a Debian/Ubuntu VPS with a domain and reachable TCP 80/443, extract the release and run `./install.sh --dry-run --mode fresh --domain mcp.your-domain.org --proxy caddy` before `sudo ./install.sh`. The interactive wizard sets up an unprivileged gateway, a separate job identity, persistent workspace, root-only credentials, and optional Caddy TLS or an existing reverse proxy.
+[English README](../README.en.md) · [简体中文](zh-CN/QUICKSTART.md)
 
-Use the resulting `https://YOUR_DOMAIN/mcp` as the ChatGPT MCP endpoint and `https://YOUR_DOMAIN/admin/` for administration. Refresh/review/publish tool actions when changing profiles or server schemas. Upload a native ZIP, call `file_import`/`file_unpack`, read with `fs_*`, change/test with `workspace_execute`, review with `workspace_review`, and deliver via `file_export`.
+SuperChatDev is a purpose-built development MCP runtime for ChatGPT's native web interface, not an all-in-one AI agent platform.
 
-Existing deployments must use **Upgrade**. The installer refuses silently replacing credentials and keeps state and workspaces. Read [Installation](INSTALLATION.md), [Security](SECURITY.md), and [Troubleshooting](TROUBLESHOOTING.md).
+## Install in one line
+
+On Debian/Ubuntu with systemd, run this in an SSH terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh | sudo bash -s -- --lang en
+```
+
+You do **not** need to clone the repo. By default, the first menu offers Simplified Chinese (default) and English. Select Fresh install or Upgrade. A fresh install requires a real domain pointed at the host and HTTPS via managed Caddy or your existing reverse proxy.
+
+**Security:** The one-liner downloads source over HTTPS and runs it as root. Read and trust the script before installing; see the [Installation guide](INSTALLATION.md) for a review-first command.
+
+## Connect ChatGPT Web
+
+- MCP endpoint: `https://YOUR_DOMAIN/mcp`
+- Admin console: `https://YOUR_DOMAIN/admin/`
+- Default local health check: `http://127.0.0.1:18787/health`
+
+Register the HTTPS MCP URL inside ChatGPT, complete OAuth, and refresh/review/publish tool actions if ChatGPT still shows an old tool catalog.
+
+Try the core workflow: upload project ZIP → `file_import` → `file_unpack` → `fs_*` code navigation → `workspace_execute` editing/testing → `workspace_review` → `file_export` back to the chat.
+
+[Configuration](CONFIGURATION.md) · [Tool contracts](TOOLS.md) · [Troubleshooting](TROUBLESHOOTING.md)

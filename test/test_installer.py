@@ -41,7 +41,23 @@ class InstallTests(unittest.TestCase):
   out=subprocess.run([sys.executable,str(MODULE),'--dry-run','--mode','fresh',
     '--domain','mcp.real-world.org','--proxy','caddy'],capture_output=True,text=True)
   self.assertEqual(out.returncode,0,out.stderr)
-  self.assertIn('No packages, users, configs, files or services were changed',out.stdout)
+  self.assertIn('没有修改软件包、用户、配置、文件或服务',out.stdout)
+ def test_english_dryrun_is_available(self):
+  out=subprocess.run([sys.executable,str(MODULE),'--lang','en','--dry-run','--mode','fresh',
+    '--domain','mcp.real-world.org','--proxy','caddy'],capture_output=True,text=True)
+  self.assertEqual(out.returncode,0,out.stderr)
+  self.assertIn('DRY RUN: No packages, users, configs, files or services were changed.',out.stdout)
+  self.assertNotIn('试运行完成',out.stdout)
+ def test_language_default_is_chinese(self):
+  out=subprocess.run([sys.executable,str(MODULE),'--dry-run','--mode','upgrade'],
+     capture_output=True,text=True)
+  self.assertEqual(out.returncode,0,out.stderr)
+  self.assertIn('仅更新运行时',out.stdout)
+ def test_localized_error_message(self):
+  out=subprocess.run([sys.executable,str(MODULE),'--mode','fresh','--dry-run','--domain','127.0.0.1'],
+     capture_output=True,text=True)
+  self.assertNotEqual(out.returncode,0)
+  self.assertIn('必须使用 HTTPS 域名',out.stderr)
  def test_dryrun_upgrade_has_no_host_mutations(self):
   out=subprocess.run([sys.executable,str(MODULE),'--dry-run','--mode','upgrade'],capture_output=True,text=True)
   self.assertEqual(out.returncode,0,out.stderr)

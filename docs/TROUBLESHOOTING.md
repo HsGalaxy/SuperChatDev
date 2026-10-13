@@ -13,3 +13,12 @@
 **Rust or build issues:** Run the `doctor.sh` diagnostic; check `CARGO_HOME`, `RUSTUP_HOME`, PATH and binary versions. Ripgrep is optional for native `fs_search`.
 
 **Upgrade fails:** Read the install log and the private backup path; check hash-conflict errors. The installer should not overwrite modified production files without review. Restore matching runtime/settings snapshots as required.
+
+
+## One-line installation: prompts not appearing
+
+For streamed Bash installation, use an SSH session with a controlling terminal, e.g. `curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh | sudo bash`. The downloaded launcher reconnects the Python wizard to `/dev/tty` so it does not read the piped script as interactive input. Headless automation requires explicit `--mode`, `--domain` for new installations, and `--yes` for privileged changes.
+
+Choose **2. English** at the first screen or append `--lang en` using `| sudo bash -s -- --lang en`. Chinese is the default.
+
+If download fails, confirm TLS/DNS access to `raw.githubusercontent.com` and `codeload.github.com`. Do not disable TLS verification to work around the issue. The bootstrap refuses archives with unsafe paths, symlinks or special files.
