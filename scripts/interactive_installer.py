@@ -187,6 +187,9 @@ def ensure_node(allow_install: bool):
         keyring = "/usr/share/keyrings/nodesource.gpg"
         # Never pipe a remote shell script into bash.
         run("gpg", "--batch", "--yes", "--dearmor", "--output", keyring, keyfile.name)
+        # The root bootstrap uses umask 077; APT verifies signatures as _apt.
+        # The public keyring must be world-readable (not the private token files).
+        os.chmod(keyring, 0o644)
     atomic_write(Path("/etc/apt/sources.list.d/nodesource.list"),
         "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main\n", 0o644)
     run("apt-get", "update")
