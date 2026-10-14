@@ -32,7 +32,7 @@ function toast(message, error = false) {
   setTimeout(() => item.remove(), 4300);
 }
 function showLogin() {
-  clearIssuedBearer();
+  clearIssuedBearer(); clearGitSecrets();
   csrf = ''; byId('auth-screen').hidden = false; byId('shell').hidden = true;
   byId('login-password').value = ''; byId('login-error').textContent = '';
 }
@@ -62,12 +62,13 @@ byId('logout').addEventListener('click', async () => {
   showLogin();
 });
 function navigate(page) {
-  if (!['overview','activity','jobs','files','settings'].includes(page)) return;
+  if (!['overview','activity','jobs','files','git','settings'].includes(page)) return;
   if (currentPage === 'settings' && page !== 'settings') clearIssuedBearer();
+  if (currentPage === 'git' && page !== 'git') clearGitSecrets();
   currentPage = page;
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + page));
   document.querySelectorAll('[data-nav]').forEach(el => el.classList.toggle('active', el.dataset.nav === page));
-  byId('top-crumb').textContent = ({overview:'总览',activity:'MCP 调用记录',jobs:'任务与批处理',files:'文件管理',settings:'系统设置'})[page];
+  byId('top-crumb').textContent = ({overview:'总览',activity:'MCP 调用记录',jobs:'任务与批处理',files:'文件管理',git:'Git / GitHub',settings:'系统设置'})[page];
   document.querySelector('.sidebar').classList.remove('open');
   window.scrollTo({top:0,behavior:'instant'});
   refreshPage();
@@ -81,7 +82,7 @@ byId('refresh').addEventListener('click', refreshPage);
 function refreshPage() {
   if (byId('shell').hidden) return;
   if (loading) { pendingRefresh = true; return; }
-  const loaders = { overview: loadOverview, activity: loadActivity, jobs: loadJobs, files: loadFiles, settings: loadSettings };
+  const loaders = { overview: loadOverview, activity: loadActivity, jobs: loadJobs, files: loadFiles, git: loadGit, settings: loadSettings };
   loading = true;
   Promise.resolve(loaders[currentPage]()).catch(e => toast(e.message, true)).finally(() => {
     loading = false;
@@ -485,6 +486,156 @@ document.addEventListener('click',async event=>{
     toast('已撤销客户端及其令牌');await loadOAuthStatus();}
   catch(e){toast(e.message,true);b.disabled=false;}
 });
+
+// Git configuration is isolated from the general MCP permissions form.
+// No private key is ever fetched from the server; imported key text is cleared
+// from the browser as soon as the submission completes.
+let gitProfiles=[];
+function clearGitSecrets(){
+  for(const id of ['git-private-key','git-admin-password']){
+    const field=byId(id);if(field)field.value='';
+  }
+}
+function selectedGitRepo(){
+  return (byId('git-profile-select').value||byId('git-repository').value).trim();
+}
+function renderGitSelection(){
+  const repo=selectedGitRepo();
+  const item=gitProfiles.find(p=>p.repository.toLowerCase()===repo.toLowerCase());
+  const display=byId('git-key-result');
+  display.hidden=!item;
+  if(!item)return;
+  setText('git-key-status',item.present?'已生成 / 已导入服务器':'密钥文件不存在');
+  setText('git-fingerprint',item.fingerprint||'SHA-256 未知');
+  byId('git-public-key').value=item.publicKey||'';
+  const segments=item.repository.split('/').map(encodeURIComponent);
+  byId('git-add-key-link').href='https://github.com/'+segments.join('/')+'/settings/keys';
+}
+async function loadGit(preferred){
+  const result=await api('git');
+  gitProfiles=result.profiles||[];
+  const selected=preferred||byId('git-profile-select').value;
+  const options=gitProfiles.map(p=>'<option value="'+esc(p.repository)+'">'+esc(p.repository)+(p.present?'':' · 缺少密钥')+'</option>').join('');
+  byId('git-profile-select').innerHTML='<option value="">选择已管理的仓库…</option>'+options;
+  if(gitProfiles.some(p=>p.repository===selected))byId('git-profile-select').value=selected;
+  else if(!selected&&gitProfiles.length===1)byId('git-profile-select').value=gitProfiles[0].repository;
+  if(byId('git-profile-select').value)byId('git-repository').value=byId('git-profile-select').value;
+  byId('git-user-name').value=result.identity?.name||'';
+  byId('git-user-email').value=result.identity?.email||'';
+  byId('git-adopt').disabled=!result.existingManualKey;
+  byId('git-remove').disabled=!byId('git-profile-select').value;
+  byId('git-test').disabled=!byId('git-profile-select').value;
+  renderGitSelection();
+  if(!gitProfiles.length)
+    setText('git-connection-result','未配置仓库密钥。先填写 owner/repo，再生成或导入密钥。');
+}
+byId('git-profile-select').addEventListener('change',()=>{
+  if(byId('git-profile-select').value)
+    byId('git-repository').value=byId('git-profile-select').value;
+  renderGitSelection();
+  setText('git-connection-result','等待连接检测…');
+});
+byId('git-repository').addEventListener('input',()=>{
+  const repo=byId('git-repository').value.trim();
+  byId('git-profile-select').value=gitProfiles.some(p=>p.repository===repo)?repo:'';
+  renderGitSelection();
+});
+byId('git-identity-form').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const button=event.submitter||byId('git-identity-form').querySelector('button');
+  button.disabled=true;
+  try{
+    await api('git/identity',{method:'POST',data:{name:byId('git-user-name').value,email:byId('git-user-email').value}});
+    toast('Git 提交身份已保存到命令执行账户');
+  }catch(error){toast(error.message,true);}
+  finally{button.disabled=false;}
+});
+function validateGitRepo(){
+  const repository=byId('git-repository').value.trim();
+  if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)){
+    toast('请填写 GitHub 仓库：owner/repo',true);return null;
+  }
+  return repository;
+}
+async function runGitKeyAction(kind){
+  const repository=validateGitRepo();
+  if(!repository)return;
+  const destructive=kind==='adopt'||kind==='import';
+  const password=byId('git-admin-password').value;
+  if(destructive&&!password){toast('该操作需要重新输入管理员密码',true);return;}
+  if(gitProfiles.some(p=>p.repository.toLowerCase()===repository.toLowerCase())){
+    toast('仓库已有密钥；若要轮换，请先删除旧配置',true);return;
+  }
+  const privateKey=kind==='import'?byId('git-private-key').value:undefined;
+  if(kind==='import'&&!privateKey){toast('请粘贴未加密的 ED25519 私钥',true);return;}
+  const button=byId('git-'+(kind==='generate'?'generate':kind==='adopt'?'adopt':'import'));
+  button.disabled=true;
+  try{
+    const result=await api('git/'+kind,{method:'POST',data:{repository,password,...(privateKey?{privateKey}:{})}});
+    toast('服务器密钥配置完成。请到 GitHub Deploy keys 添加公钥。');
+    await loadGit(result.repository);
+    setText('git-connection-result','公钥已准备好；下一步在 GitHub 仓库 Settings → Deploy keys 授权写入。');
+    if(kind==='import')byId('git-import-block').hidden=true;
+  }catch(error){toast(error.message,true);}
+  finally{clearGitSecrets();button.disabled=false;}
+}
+byId('git-generate').addEventListener('click',()=>runGitKeyAction('generate'));
+byId('git-adopt').addEventListener('click',()=>runGitKeyAction('adopt'));
+byId('git-import').addEventListener('click',()=>runGitKeyAction('import'));
+byId('git-import-toggle').addEventListener('click',()=>{
+  const block=byId('git-import-block');block.hidden=!block.hidden;
+  if(block.hidden)byId('git-private-key').value='';
+});
+byId('git-copy-key').addEventListener('click',async()=>{
+  const pub=byId('git-public-key').value;if(!pub)return;
+  try{await navigator.clipboard.writeText(pub);toast('GitHub Deploy Key 公钥已复制');}
+  catch(error){toast('复制失败，请手动选中公钥',true);}
+});
+byId('git-test').addEventListener('click',async()=>{
+  const repository=byId('git-profile-select').value;
+  if(!repository){toast('请先选择已管理的仓库',true);return;}
+  const button=byId('git-test');button.disabled=true;
+  setText('git-connection-result','正在通过 SSH 验证 GitHub 仓库访问…');
+  try{
+    const result=await api('git/test',{method:'POST',data:{repository}});
+    setText('git-connection-result',result.ok?
+      '✓ SSH 认证和仓库读取已通过。GitHub Deploy Key 的推送写权限仍需实际 git push 才能确认。':
+      '连接失败：'+(result.error||'请检查 GitHub Deploy keys 的公钥与权限'));
+    if(result.ok)toast('GitHub 仓库读取成功');
+  }catch(error){setText('git-connection-result',error.message);toast(error.message,true);}
+  finally{button.disabled=false;}
+});
+byId('git-remove').addEventListener('click',async()=>{
+  const repository=byId('git-profile-select').value;
+  if(!repository)return;
+  if(!confirm('删除 '+repository+' 的服务器密钥？已经绑定的 Git 推送地址会失效，且 GitHub 上需要另行删除公钥。'))return;
+  const password=byId('git-admin-password').value;
+  if(!password){toast('请先输入管理员密码确认删除',true);return;}
+  const button=byId('git-remove');button.disabled=true;
+  try{
+    await api('git/remove',{method:'POST',data:{repository,password}});
+    toast('仓库 SSH 密钥已移除');
+    byId('git-repository').value='';
+    await loadGit();
+    setText('git-connection-result','密钥已从服务器移除，请到 GitHub 手动撤销旧公钥。');
+  }catch(error){toast(error.message,true);}
+  finally{clearGitSecrets();button.disabled=false;}
+});
+byId('git-bind-form').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const repository=byId('git-profile-select').value,cwd=byId('git-project-cwd').value.trim();
+  if(!repository){toast('先选择已管理的仓库',true);return;}
+  if(!cwd){toast('填写工作区相对路径',true);return;}
+  if(!confirm('确认把 '+cwd+' 的 origin 推送地址指向 '+repository+'？不会修改 fetch 地址。'))return;
+  const button=event.submitter||byId('git-bind-form').querySelector('button');button.disabled=true;
+  try{
+    const result=await api('git/bind',{method:'POST',data:{repository,cwd}});
+    setText('git-connection-result','绑定成功：'+result.cwd+' → '+result.pushUrl+'。下一步可直接 git push origin main。');
+    toast('项目的 Git Push 地址配置成功');
+  }catch(error){toast(error.message,true);}
+  finally{button.disabled=false;}
+});
+
 setInterval(()=>{
   if(byId('shell').hidden)return;
   setText('top-time',new Date().toLocaleTimeString('zh-CN',{hour12:false}));

@@ -68,3 +68,26 @@ h1,h2,h3,p{margin:0}h1{letter-spacing:-1.4px}small{font-size:12px}a{color:inheri
 .core-discovery-note{margin-top:18px}.core-discovery-note p{line-height:1.8}
 
 @media(max-width:800px){.oauth-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+
+/* Git administration — scoped to the existing authenticated control plane. */
+.git-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;align-items:start}
+.git-panel:last-child{grid-column:1/-1}
+.git-panel .panel-head{padding:0 0 18px}
+.git-input-stack{display:flex;flex-direction:column;gap:15px}
+.git-two-col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.git-field{display:flex;flex-direction:column;gap:8px;color:#536178;font-size:11px;font-weight:720}
+.git-field input,.git-field select,.git-field textarea{width:100%;border:1px solid #e3e8f1;background:#fbfcff;border-radius:9px;color:#2b3751;font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;outline:none}
+.git-field input,.git-field select{height:41px;padding:0 12px}
+.git-field textarea{min-height:75px;padding:12px;resize:vertical;word-break:break-all}
+.git-field input:focus,.git-field select:focus,.git-field textarea:focus{border-color:#827bfa;box-shadow:0 0 0 3px #625bfa19}
+.git-action-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.git-action-row .btn{max-width:100%;white-space:normal}
+.git-key-result{border-radius:10px;background:#f8f9ff;border:1px solid #e5e5fc;padding:14px;display:flex;flex-direction:column;gap:12px}
+.git-key-result strong{font-size:12px;color:#4a4b84}
+.git-key-result .soft-pill{font-size:9px;overflow-wrap:anywhere;word-break:break-all}
+.git-key-result textarea{background:white}
+.git-import-block{display:flex;flex-direction:column;gap:10px;border:1px dashed #b9b3ef;border-radius:10px;padding:15px}
+.git-message{border-radius:10px;padding:12px 14px;background:#f5f7fa;color:#627087;font-size:11px;line-height:1.75;overflow-wrap:anywhere}
+.git-help{margin-top:20px}
+@media(max-width:900px){.git-grid{grid-template-columns:1fr}.git-panel:last-child{grid-column:auto}}
+@media(max-width:560px){.git-two-col{grid-template-columns:1fr}.git-action-row .btn{font-size:11px}}

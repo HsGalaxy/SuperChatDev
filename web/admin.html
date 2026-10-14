@@ -7,6 +7,7 @@
 <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>
 <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3m6 0h4"/></symbol>
 <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-git" viewBox="0 0 24 24"><circle cx="6" cy="3" r="2"/><circle cx="6" cy="21" r="2"/><circle cx="18" cy="6" r="2"/><path d="M6 5v14m0-12c0 7 12 2 12-1"/></symbol>
 <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3m10-10h-3M5 12H2m17-7-2 2M7 17l-2 2M5 5l2 2m10 10 2 2"/></symbol>
 <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9A7 7 0 0 1 18 7l2 5M4 12l2 5a7 7 0 0 0 12.5-2"/></symbol>
 <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
@@ -36,6 +37,7 @@
 <button class="nav-link" data-nav="activity"><svg class="icon"><use href="#i-activity"></use></svg> MCP 调用记录 <span class="nav-chevron">›</span></button>
 <button class="nav-link" data-nav="jobs"><svg class="icon"><use href="#i-terminal"></use></svg> 任务与批处理 <span class="nav-chevron">›</span></button>
 <button class="nav-link" data-nav="files"><svg class="icon"><use href="#i-folder"></use></svg> 文件管理 <span class="nav-chevron">›</span></button>
+<button class="nav-link" data-nav="git"><svg class="icon"><use href="#i-git"></use></svg> Git / GitHub <span class="nav-chevron">›</span></button>
 <div class="nav-heading heading-gap">服务器</div>
 <button class="nav-link" data-nav="settings"><svg class="icon"><use href="#i-settings"></use></svg> 系统设置 <span class="nav-chevron">›</span></button></nav>
 <div class="sidebar-foot"><div class="server-chip"><span class="live-dot"></span><span><strong>Gateway online</strong><small>连接安全 · 自托管</small></span></div>
@@ -68,6 +70,35 @@
 <section class="panel file-panel"><div class="files-toolbar"><div class="file-path" id="file-breadcrumbs"></div><div class="file-buttons"><button class="btn btn-compact btn-outline" id="file-up">↑ 上级</button><button class="btn btn-compact btn-outline write-action" id="file-newfolder"><svg class="icon"><use href="#i-folder"></use></svg> 新建文件夹</button><button class="btn btn-compact btn-outline write-action" id="file-newfile"><svg class="icon"><use href="#i-plus"></use></svg> 新建文件</button><button class="btn btn-compact btn-primary write-action" id="file-upload-button"><svg class="icon"><use href="#i-upload"></use></svg> 上传</button><input id="file-upload" type="file" multiple hidden></div></div>
 <div class="file-table-head"><div class="search-input"><svg class="icon"><use href="#i-search"></use></svg><input id="file-search" placeholder="筛选当前目录"></div><span class="table-count" id="file-count"></span></div>
 <div class="table-scroll"><table class="file-table"><thead><tr><th>名称</th><th>文件大小</th><th>修改时间</th><th>操作</th></tr></thead><tbody id="file-rows"></tbody></table></div><div class="file-note"><svg class="icon"><use href="#i-shield"></use></svg> 仅允许访问工作区内部路径，拒绝符号链接。目录须清空后才可删除。</div></section></section>
+<section class="page" id="page-git">
+<div class="page-heading"><div><div class="eyebrow">DEVELOPMENT / REPOSITORY ACCESS</div><h1>Git / GitHub<span class="heading-period">.</span></h1><p>配置实际执行 MCP 命令的 Git 身份、仓库专属 SSH 密钥和推送地址。</p></div><span class="soft-pill"><svg class="icon"><use href="#i-shield"></use></svg> RUNNER SCOPED</span></div>
+<div class="git-grid">
+<section class="panel settings-panel git-panel"><div class="panel-head"><div><div class="eyebrow">01 / COMMIT IDENTITY</div><h3>Git 提交身份</h3><p class="setting-hint">直接配置命令执行用户的 git --global，不需要 root。</p></div></div>
+<form id="git-identity-form" class="git-input-stack">
+<div class="git-two-col"><label class="git-field">提交用户名<input id="git-user-name" maxlength="100" autocomplete="off" placeholder="例如 HsGalaxy" required></label><label class="git-field">提交邮箱<input id="git-user-email" type="email" maxlength="254" autocomplete="off" placeholder="you@example.com" required></label></div>
+<div class="git-action-row"><button class="btn btn-primary btn-compact" type="submit">保存 Git 身份</button><span class="field-note">更改只影响后续提交，不改已有 Commit。</span></div></form>
+</section>
+<section class="panel settings-panel git-panel"><div class="panel-head"><div><div class="eyebrow">02 / DEPLOY KEY ACCESS</div><h3>仓库专属 SSH Deploy Key</h3><p class="setting-hint">为每个 GitHub 仓库创建独立密钥，或导入现有密钥；私钥永不从 Admin API 返回。</p></div></div>
+<div class="git-input-stack">
+<label class="git-field">仓库名称（owner/repo）<input id="git-repository" maxlength="170" spellcheck="false" autocomplete="off" placeholder="HsGalaxy/SuperChatDev"></label>
+<label class="git-field">已管理的仓库<select class="select" id="git-profile-select"><option value="">尚未配置</option></select></label>
+<div class="git-action-row"><button class="btn btn-primary btn-compact" id="git-generate" type="button">生成 SSH 密钥</button><button class="btn btn-outline btn-compact" id="git-adopt" type="button">使用已有服务器密钥</button><button class="btn btn-outline btn-compact" id="git-import-toggle" type="button">导入私钥</button></div>
+<div id="git-import-block" class="git-import-block" hidden><label class="git-field">ED25519 私钥（仅此一次传输，不回显）<textarea id="git-private-key" rows="5" autocomplete="off" spellcheck="false" placeholder="粘贴未加密的 ED25519 私钥（输入后不会回显）"></textarea></label><button class="btn btn-outline btn-compact" id="git-import" type="button">验证并安全导入</button></div>
+<label class="git-field">管理员密码（导入、沿用密钥、删除时确认）<input id="git-admin-password" type="password" autocomplete="off" placeholder="重新输入 Admin 密码"></label>
+<div class="git-key-result" id="git-key-result" hidden>
+<div class="git-action-row"><strong id="git-key-status">密钥状态</strong><span class="soft-pill" id="git-fingerprint">SHA256</span></div>
+<label class="git-field">GitHub Deploy Key 公钥<textarea id="git-public-key" rows="3" readonly spellcheck="false"></textarea></label>
+<div class="git-action-row"><button class="btn btn-outline btn-compact" type="button" id="git-copy-key">复制公钥</button><a class="btn btn-outline btn-compact" id="git-add-key-link" href="https://github.com/settings/keys" rel="noopener noreferrer" target="_blank">前往仓库 Deploy keys ↗</a></div>
+<div class="field-note">在 GitHub 上添加公钥并勾选 Allow write access。认证成功不代表已经拥有推送权限。</div></div>
+<div class="git-action-row"><button class="btn btn-outline btn-compact" id="git-test" type="button">测试 GitHub 连接</button><button class="btn btn-outline btn-compact danger-button" id="git-remove" type="button">移除当前密钥</button></div>
+<div class="git-message" id="git-connection-result" role="status">等待配置…</div>
+</div></section>
+<section class="panel settings-panel git-panel"><div class="panel-head"><div><div class="eyebrow">03 / CONNECT PROJECT</div><h3>绑定项目推送地址</h3><p class="setting-hint">设置工作区中 Git 仓库的 origin push URL，保留原来的 fetch 地址和文件。</p></div></div>
+<form id="git-bind-form" class="git-input-stack">
+<label class="git-field">工作区相对路径<input id="git-project-cwd" maxlength="260" spellcheck="false" placeholder="imports/my-project" required></label>
+<div class="git-action-row"><button class="btn btn-primary btn-compact" type="submit">绑定 Git Push 地址</button><span class="field-note">只配置推送，不会自动 git push。</span></div></form>
+<div class="notice-box git-help"><strong>以后可以直接使用服务器 Git</strong><p>执行 git add、git commit、git push origin main；无需再让 GitHub MCP 逐个文件创建提交。私钥由命令执行用户持有，因此只让可信模型执行 Shell。</p></div>
+</section></div></section>
 <section class="page" id="page-settings"><div class="page-heading"><div><div class="eyebrow">CONTROL PLANE / CONFIGURATION</div><h1>服务设置<span class="heading-period">.</span></h1><p>调整 MCP 权限、OAuth 认证、接入密钥与资源上限。</p></div><span class="soft-pill"><svg class="icon"><use href="#i-shield"></use></svg> SECURED</span></div>
 <form id="settings-form"><div class="settings-grid"><div class="settings-main">
 <section class="panel settings-panel">

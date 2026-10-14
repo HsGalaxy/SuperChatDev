@@ -118,4 +118,8 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 
 **Limitations:** Single trusted owner only, not a multi-tenant sandbox. MCP cannot disable ChatGPT's own approval dialogs or force OAuth refresh support in every client. Jobs may survive HTTP gateway restarts, but a host reboot does not automatically resume running commands.
 
-**License:** [MIT](LICENSE) · **Current runtime:** v0.3.3
+**License:** [MIT](LICENSE) · **Current runtime:** v0.3.4
+
+### Git / GitHub from Admin (v0.3.4)
+
+Open `/admin/` → **Git / GitHub** to configure the real command runner's Git commit identity, provision per-repository GitHub SSH Deploy Keys (generate, import, or adopt an existing server key), copy public keys, test repository read access, and bind workspace Git push remotes. The Admin never returns private-key bytes; importing, adopting and deleting keys require a fresh Admin password confirmation. Add the public key to GitHub's repository Settings → Deploy keys and enable **Allow write access**. A successful read test does not prove write permission.

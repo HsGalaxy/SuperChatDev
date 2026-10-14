@@ -1,10 +1,10 @@
 {
-  "version": "0.3.3",
+  "version": "0.3.4",
   "files": {
-    "README.md": "a4a01db900b0c0edbf3673e37dc2df315d3c30a5c7b8eae68d26d451e310ebcb",
-    "package.json": "f064cb95a5209b65f5a0eb64c08771ed824ffb9f3bd33d7a8e699a8233b35248",
+    "README.md": "c9ce5ad32728bc66300991ef888b13037c6ad6b8fe17d9737f98dca6256d01c4",
+    "package.json": "2888ee4522415a6f121a3688cb8478ce62b78d86012b7eec4ce5e998cb1ead17",
     "src/admin-files.mjs": "e9abe9394d760e21df7e8b93e52602e6d41dad85802583896c1fdf095b0d88e2",
-    "src/admin.mjs": "f9264746998ab02d1d3c7510e8465ef2dd425ced236fb318d35f6f59cd3e4e0c",
+    "src/admin.mjs": "c46e3c6d827d8ac5be86974a6bc687284267b55bceef6cb52ea066bc34594489",
     "src/agent-patch.mjs": "fdee9fdc3db72a61e5806334bd96252ff43ff0512f68c45f2a7f77adff447325",
     "src/build-broker.py": "35e8a52dd15ffeebea3fcbc8421bd0e6f81c050069e5f322545bbd63254651b7",
     "src/code-tools.mjs": "514401cb9311e7051fe03da10349312277cb8987aa136fa9502ed93db918159a",
@@ -12,6 +12,8 @@
     "src/container-build.py": "58061234a6fdb71fa54ce00b7083bc1c6e831029c654508e3527ac617c6963ca",
     "src/environment.mjs": "16b616b93116ef72e938879f74b524404dc57b7fc36e09d070d879ac0dce8e47",
     "src/files.mjs": "cadf880fb44802a6ea481536e9e5ab2a310202287dd74da094b7d68a5bc5fb16",
+    "src/git-admin-worker.mjs": "559f3b74582dd22becaef662abb3ed109f3e68f7889d2a07143f4fa463164375",
+    "src/git-admin.mjs": "6b3239d83cdb14be010357b9bfad44892911c71a23f89b0709b2f826271a2599",
     "src/guidance.mjs": "fb54de7d0b51827a2146c68c221171a774520bd50b17d94391ea2f39eb1e7807",
     "src/head-tail.mjs": "142a5c619872c81e0d7fa19fddb904b64b99a8f8aa5d4bcba0497feb3dba31ec",
     "src/job-worker.mjs": "b4bdadb324409ab0a65333993fe7556ce26149e083a0e61ba2ace265f747923b",
@@ -24,15 +26,15 @@
     "src/process-status.mjs": "8fcfafccd76b7c416603c448f9e6244ea82d90d2605bcc3a1a1703f20f1fbea4",
     "src/review.mjs": "0a2448b7f6e3b092cdf010f1f6321d3bfba84638b411c2a6791a142abd352b05",
     "src/scoped-reader.mjs": "699c52fee2d53a3a73d4075961a7b2f6cfb2abd2b4e1bb3ae420bfeb123d7ebd",
-    "src/server.mjs": "dc852caf0dfd90d524f22d33d992382ca4d6060ab6490f97e8e4d72a3ca36b6b",
+    "src/server.mjs": "beffbe564c952dbbf6d7fcea633c8fdb7a01eb520726cb6c96fe2658411fdef6",
     "src/trace.mjs": "15a1c1e494a71122cd01a80cd29a2c90e10b4600d485770ffe5713a02ad53a86",
     "src/unpack.py": "98f24274fcd38b07a406fa8b80b11fe5010f6e81fd0f464cd95891f0942d0509",
     "src/upstream.mjs": "6f1ff48d5e9b8ad94b748a6b94be046c11429662cd417c3ca95975cc6c0cc0bb",
     "src/workspace-step.mjs": "ad53b54d2b7ac0b2710b7eaacde1c2867cff53986c14b5bbfb89b10e7bbd7bf7",
     "src/workspace-worker.mjs": "f9ee7c91351fe266b456c132e08ec9cdbf910e4c400122b5290d1c21b8e681f4",
     "src/workspace.mjs": "67d9f5b76f5466212617c4871eff070638cccb0756bccc8e2ebcde16a0f0d9a9",
-    "web/admin.css": "813fd62ee7ffe71de4ee8ae61b1733523b5e902f6a435257545b6f06968be153",
-    "web/admin.html": "eea094a11f6fd3bac4f14e62d07aafab02c3f92bd2e62ce61f46700dbae53a1d",
-    "web/admin.js": "f7efde7bbef2f1aedf3851650222059da2bdbd50e789f3e2621c84c9f1028d3f"
+    "web/admin.css": "a2bc0a5fe4556bee0b2df5dc36da6d4fe3e4cad227f52c2bd43076894c7e71b5",
+    "web/admin.html": "d3aa7e2f3343554f2b9eaab4a362d4e4032b02a263b59f6e5ebf14316be0bc64",
+    "web/admin.js": "5bbe4216404e597445639640b1bb04418f04530db904bd01eb55a43fa867cfae"
   }
 }

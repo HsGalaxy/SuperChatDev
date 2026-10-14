@@ -133,4 +133,10 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 
 **适用范围：** 单一受信任所有者；不是多租户执行沙箱。MCP 不能绕过 ChatGPT 网页端的平台级授权弹窗，也不能保证客户端一定支持 OAuth 自动刷新。Job 可在网关进程重启后恢复查询，但机器重启不会自动继续执行命令。
 
-**许可证：** [MIT](LICENSE) · **当前版本：** v0.3.3（中文/英文安装文档增强）
+**许可证：** [MIT](LICENSE) · **当前版本：** v0.3.4（中文/英文安装文档增强）
+
+### Admin 原生 Git 配置（v0.3.4）
+
+登录 `/admin/` → **Git / GitHub**，可以为实际运行 MCP 命令的执行用户设置 Git 提交身份、生成或导入 GitHub 仓库专属 SSH Deploy Key、复制公钥、检查仓库读取，以及绑定项目的 `origin` 推送地址。已有 `~/.ssh/superchatdev_deploy_ed25519` 可直接安全沿用，不必再次生成密钥。
+
+私钥仅保留在执行用户的私有 SSH 目录，页面和接口只展示公钥；导入、沿用和删除操作需要管理员密码重新确认。GitHub 仍需人工将公钥加入对应仓库的 Settings → Deploy keys，并开启 **Allow write access**。仓库读取成功不代表推送权限已验证。

@@ -43,3 +43,9 @@ The original snippet must match **exactly and uniquely**; an `@@ function name` 
 The default Core still has **16 tools**. Interactive/legacy profiles expose `job_input`; use `job_start` with `tty:true` followed by bounded `job_input` (up to 4 KiB) and `job_read`. Requires util-linux `script`. Pass a stable `request_id` to `job_input` for safe identical retries within the same live session; conflicting reuse is refused. The terminal may echo typed input; never type secrets before understanding echo behavior. Refresh/review/publish the ChatGPT app action definitions for the new `tty` property and interactive tool. `job_input` returning `input_accepted:true` acknowledges that text was sent, **not** that the program has produced its response. Continue with `job_read` and the returned `next_offset` rather than sending the same text again.
 
 Admission uses a durable active-job index rather than scanning all historical tasks. The original cross-process `flock` remains; there is **no Bubblewrap or handle-relative writer change**.
+
+## v0.3.4: Git credentials in Admin
+
+The Admin **Git / GitHub** page configures the command runner's global Git name/email, manages repository-scoped ED25519 SSH Deploy Keys (generate/import/adopt), provides GitHub HTTPS-verified SSH host keys (automatically provisioned on binding) and repository-read diagnostics, and updates only `origin` push URLs for projects inside the workspace. Import/adoption/deletion require Admin password confirmation. Private keys never appear in Admin responses or audit logs.
+
+Repository access is not equivalent to write permission: install the public key in the corresponding GitHub repository and enable **Allow write access**. No GitHub PATs are persisted, no new Core MCP tool is exposed, and the v0.3.3 published tool schema remains valid.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.4 — Admin Git / GitHub configuration
+
+- Adds a dedicated **Git / GitHub** Admin page for commit author name/email, per-repository ED25519 SSH Deploy Keys, key import, existing-key adoption, GitHub repository read checks, and scoped `origin` push URL configuration.
+- Runs Git credential management under the **actual unprivileged command-execution UID/HOME**, not the differently privileged Admin web service account. Changes do not require root or a server restart.
+- Stores private keys with owner-only permissions, never returns them from the Admin API, preserves pre-existing SSH configuration, and verifies GitHub host keys using the official HTTPS API.
+- Admin-session, CSRF, and password confirmation protect sensitive mutations. Audit logs record only action names, never private keys, tokens, repo names or credentials.
+- GitHub deploy keys remain repository-scoped; configuring a public key does not itself enable GitHub write access. Defaults to SSH only; no HTTPS PAT persisted.
+- No new MCP Core tools or input-schema changes; the v0.3.3 tool contract remains valid.
+
 ## 0.3.3 — Web MCP latency and development ergonomics
 
 - Added capped-memory rolling output tail and bounded head/tail `output_preview` on terminal jobs without changing legacy log cursors. Workspace `exec` also reports previews.

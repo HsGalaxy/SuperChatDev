@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream/promises';
 import { atomicJSON, readJSON, requireInteger } from './common.mjs';
 import { AdminFiles } from './admin-files.mjs';
+import { GitAdmin } from './git-admin.mjs';
 import { PROFILES, denialReason, LEGACY_TOOL_NAMES } from './policy.mjs';
 
 const MiB = 1024 * 1024;
@@ -118,6 +119,7 @@ export class AdminConsole {
     this.sessions = new Map();
     this.failedLogins = [];
     this.adminFiles = new AdminFiles(config.workspace);
+    this.gitAdmin = new GitAdmin(config);
     this.prevCPU = null;
     this.callTimes = [];
     this.saveQueue = Promise.resolve();
@@ -370,6 +372,30 @@ export class AdminConsole {
           note: 'OAuth policy and limits apply to new actions immediately. Issued tokens keep their original expiry; restart persistence applies only when enabled. Host, port, OAuth redirect origins and environment owner password require a service restart.' }); return true;
       }
       if (req.method === 'PUT') { json(res, 200, await this.save(JSON.parse(await readBody(req, 32768)))); return true; }
+    }
+    // The Git manager targets the unprivileged command runner, not the
+    // Admin process user. It never exposes private-key material in responses.
+    if (p === '/admin/api/git' && req.method === 'GET') {
+      json(res, 200, await this.gitAdmin.run('status')); return true;
+    }
+    const gitAction = /^\/admin\/api\/git\/(identity|generate|adopt|import|remove|test|bind)$/.exec(p);
+    if (gitAction && req.method === 'POST') {
+      const action = gitAction[1];
+      const body = JSON.parse(await readBody(req, 22000));
+      if (!body || typeof body !== 'object' || Array.isArray(body))
+        throw new Error('Invalid Git administration payload');
+      if (['adopt', 'import', 'remove'].includes(action) && !equal(body.password, this.password)) {
+        json(res, 403, { error:'Admin password confirmation failed' }); return true;
+      }
+      // Pass only explicitly expected fields to the ephemeral worker.
+      const payload = action === 'identity' ? {name:body.name,email:body.email} :
+        action === 'import' ? {repository:body.repository,privateKey:body.privateKey} :
+        action === 'bind' ? {repository:body.repository,cwd:body.cwd} :
+        {repository:body.repository};
+      const result=await this.gitAdmin.run(action,payload);
+      await this.audit('git.'+action);
+      json(res,200,result);
+      return true;
     }
     if (p === '/admin/api/oauth/status' && req.method === 'GET') {
       json(res, 200, this.oauth.status()); return true;
