@@ -11,14 +11,14 @@ import {jobTools} from '../src/jobs.mjs';
 import {workspaceTools} from '../src/workspace.mjs';
 import {reviewTool} from '../src/review.mjs';
 const dirname=path.dirname(fileURLToPath(import.meta.url));
-const core=[guideTool,...fileTools,...codeTools,...jobTools,...workspaceTools,reviewTool];
+const core=[guideTool,...fileTools,...codeTools,...jobTools.filter(t=>t.name!=='job_input'),...workspaceTools,reviewTool];
 const names=['dev_get_guide','file_import','file_unpack','file_export','fs_list','fs_read','fs_search','job_start','job_read','job_list','job_cancel','workspace_execute','workspace_read','workspace_list','workspace_cancel','workspace_review'];
 const byName=new Map(core.map(t=>[t.name,t]));
 const hash=t=>createHash('sha256').update(JSON.stringify({inputSchema:t.inputSchema,fileParams:t._meta?.['openai/fileParams']||[],annotations:t.annotations||{}})).digest('hex');
 test('frozen core API matches published client schema',async()=>{
   assert.deepEqual([...byName.keys()],names);
   assert.equal(byName.size,core.length);
-  const snap=JSON.parse(await readFile(path.join(dirname,'contracts/core-tools-v0.3.2.json'),'utf8'));
+  const snap=JSON.parse(await readFile(path.join(dirname,'contracts/core-tools-v0.3.3.json'),'utf8'));
   assert.deepEqual(Object.fromEntries(names.map(n=>[n,hash(byName.get(n))])),snap.hashes,'Changed schema: coordinate client action refresh before shipping');
 });
 test('ChatGPT attachment and development handoff contracts are explicit',()=>{

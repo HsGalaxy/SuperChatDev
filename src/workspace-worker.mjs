@@ -27,7 +27,7 @@ async function save(message) {
 
 async function capture(step, spec, job) {
   const logs = await jobs.read({ job_id: job.id, max_bytes: spec.type === 'exec' ? plan.max_output_bytes : spec.type === 'container_build' ? 262144 : 32768 });
-  step.result = { exit_code: logs.exit_code, output: logs.output, next_offset: logs.next_offset, has_more: logs.has_more };
+  step.result = { exit_code: logs.exit_code, output: logs.output, ...(logs.output_preview ? { output_preview: logs.output_preview, preview_omitted_bytes: logs.preview_omitted_bytes } : {}), next_offset: logs.next_offset, has_more: logs.has_more };
   if (logs.reason) step.result.reason = logs.reason;
   if (logs.error) step.error = logs.error;
   if (spec.type !== 'exec') {

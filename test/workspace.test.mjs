@@ -254,3 +254,18 @@ test('unique, hash-guarded replace edits just one snippet and rejects duplicates
     {type:'replace',path:'settings.txt',old_text:'same',new_text:'changed'}
   ]}),/requires the exact current expected_sha256/);
 });
+
+test('workspace exec surfaces head/tail preview without losing original cursor',async t=>{
+ const {batches}=await fixture(t);
+ const output='process.stdout.write("BEGIN\\n"+"x".repeat(24000)+"\\nCOMPILE_FAILED_AT_END\\n")';
+ const result=await batches.execute({max_output_bytes:512,wait_ms:10000,steps:[
+  {type:'exec',argv:[process.execPath,'-e',output]}
+ ]});
+ assert.equal(result.status,'succeeded',JSON.stringify(result));
+ const logs=result.steps[0].result;
+ assert.ok(logs.output.startsWith('BEGIN'));
+ assert.ok(!logs.output.includes('COMPILE_FAILED_AT_END'));
+ assert.match(logs.output_preview,/COMPILE_FAILED_AT_END/);
+ assert.ok(logs.preview_omitted_bytes>0);
+ assert.ok(logs.next_offset>0);
+});

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.3 — Web MCP latency and development ergonomics
+
+- Added capped-memory rolling output tail and bounded head/tail `output_preview` on terminal jobs without changing legacy log cursors. Workspace `exec` also reports previews.
+- Added `*** Begin Patch` / `*** Update File` without line numbers while preserving Unified Diff; exact unique old-context and anchors reject ambiguous changes, local CRLF/LF survives edits.
+- Added a persistent active-job index with restart migration, stale cleanup and durable inter-process admission lock.
+- PTY input also supports an optional idempotent request_id (hash-only in live worker memory); repeated identical requests cannot type twice.\n- Added optional interactive PTY via util-linux `script` and the `job_input` tool, visible **only under interactive/legacy profiles**. Core remains 16 tools.
+- Fixed `workspace_execute.replace` authorization to require filesystem read and write permission.
+- Added regression tests for logs, patches, PTY input/cancellation and active-index concurrency. Schema refresh required for `job_start.tty`.
+
 ## 0.3.2 hotfix — Verified v0.3.0 migration
 
 - Supports safe upgrades from the pre-manifest v0.3.0 production release using the published 31-file certified SHA-256 baseline, **only if all installed files match exactly**.

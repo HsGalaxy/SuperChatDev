@@ -73,7 +73,7 @@ export async function createApp(config) {
   };
   const catalog=()=>{
     const visible=admin.visibleTools();
-    return {version:'0.3.2',profile:admin.settings.toolProfile,
+    return {version:'0.3.3',profile:admin.settings.toolProfile,
       sha256:createHash('sha256').update(JSON.stringify(visible)).digest('hex'),
       visible_tools:visible.map(t=>t.name),registered_count:tools.length,visible_count:visible.length,
       upstream:upstream?.status() || {configured:false,connected:false},
@@ -87,7 +87,7 @@ export async function createApp(config) {
 
   async function dispatch(method, params = {}) {
     if (method === 'tools/call') return traces.call(localNames.has(params.name) || upstreamNames.has(params.name) ? params.name : 'unknown_tool', upstreamNames.has(params.name) ? 'desktop_commander' : 'gateway', () => dispatchTool(params));
-    if (method === 'initialize') return { protocolVersion: versions.includes(params.protocolVersion) ? params.protocolVersion : '2025-03-26', capabilities, serverInfo: { name: 'chatgpt-dev-mcp', version: '0.3.2' }, instructions: serverInstructions };
+    if (method === 'initialize') return { protocolVersion: versions.includes(params.protocolVersion) ? params.protocolVersion : '2025-03-26', capabilities, serverInfo: { name: 'chatgpt-dev-mcp', version: '0.3.3' }, instructions: serverInstructions };
     if (method === 'ping') return {};
     if (method === 'tools/list') return { tools: admin.visibleTools(), _meta: {'starix/catalog_sha256':catalog().sha256} };
     if (method === 'resources/list') {
@@ -128,8 +128,12 @@ export async function createApp(config) {
           case 'fs_read': return toolResult(await code.read(args));
           case 'fs_search': return toolResult(await code.search(args));
           case 'workspace_review': return toolResult(await review.read(args));
-          case 'job_start': return toolResult(jobGuidance(compactJob(await jobs.start({ argv: args.argv, command:args.command, request_id:args.request_id, wait_ms:args.wait_ms, max_bytes:args.max_bytes, cwd: args.cwd, env: args.env, timeout_seconds: args.timeout_seconds }))));
+          case 'job_start':
+            if (args.tty === true && admin.settings.toolProfile === 'core')
+              throw new Error('PTY sessions require interactive or legacy tool profile');
+            return toolResult(jobGuidance(compactJob(await jobs.start({ argv: args.argv, command:args.command, request_id:args.request_id, tty:args.tty, wait_ms:args.wait_ms, max_bytes:args.max_bytes, cwd: args.cwd, env: args.env, timeout_seconds: args.timeout_seconds }))));
           case 'job_read': return toolResult(jobGuidance(compactJob(await jobs.read(args),args.include_command===true)));
+          case 'job_input': return toolResult(jobGuidance(compactJob(await jobs.input(args))));
           case 'job_list': return toolResult(await jobs.page(args));
           case 'job_cancel': return toolResult(compactJob(await jobs.cancel(args)));
           case 'workspace_execute': return toolResult(await workspaceBatches.execute(args));
@@ -160,7 +164,7 @@ export async function createApp(config) {
       // transport's DNS-rebinding protection and other endpoints strict.
       const opaqueAuthorizationOrigin = req.headers.origin === 'null' && url.pathname === '/oauth/authorize' && ['GET', 'POST'].includes(req.method);
       if (req.headers.origin && !config.httpOrigins?.includes(req.headers.origin) && !opaqueAuthorizationOrigin) { json(res, 403, { error: 'Origin not allowed' }); return; }
-      if (url.pathname === '/health' && req.method === 'GET') { json(res, 200, { ok: true, version:'0.3.2' }); return; }
+      if (url.pathname === '/health' && req.method === 'GET') { json(res, 200, { ok: true, version:'0.3.3' }); return; }
       if (await admin.handle(req, res, url, readBody, json)) return;
       if (await oauth.handle(req, res, url, readBody, json)) return;
       if (url.pathname.startsWith('/artifacts/') && (req.method === 'GET' || req.method === 'HEAD')) {

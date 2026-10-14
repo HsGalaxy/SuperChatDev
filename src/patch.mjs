@@ -2,12 +2,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isInside } from './common.mjs';
+import { parseAgentPatch } from './agent-patch.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const linesOf = text => text.match(/[^\n]*\n|[^\n]+$/g) || [];
 
 export function parsePatch(diff) {
   if (typeof diff !== 'string' || !diff || Buffer.byteLength(diff) > 768 * 1024) throw new Error('patch requires a nonempty unified diff within 768 KiB');
+  if (diff.startsWith('*** Begin Patch')) return parseAgentPatch(diff);
   const lines = linesOf(diff), files = [];
   let i = 0;
   const headerPath = (line, prefix) => {
@@ -30,19 +32,22 @@ export function parsePatch(diff) {
       if (!match) throw new Error('Invalid unified diff hunk header');
       const [oldStart, oldCount, newStart, newCount] = [Number(match[1]), Number(match[2] ?? 1), Number(match[3]), Number(match[4] ?? 1)];
       if (![oldStart, oldCount, newStart, newCount].every(Number.isSafeInteger) || (oldCount && !oldStart) || (newCount && !newStart)) throw new Error('Invalid hunk coordinates');
-      const hunk = { oldStart, oldCount, newStart, newCount, old: [], next: [] };
+      const hunk = { oldStart, oldCount, newStart, newCount, old: [], next: [] , ops: [] };
       let previous;
       while (i < lines.length && !lines[i].startsWith('@@ ') &&
              !lines[i].startsWith('--- ') && !lines[i].startsWith('diff --git ')) {
         const line = lines[i++];
         if (![' ', '+', '-'].includes(line[0])) throw new Error('Invalid patch hunk content');
         previous = line[0];
-        if (previous !== '+') hunk.old.push(line.slice(1));
-        if (previous !== '-') hunk.next.push(line.slice(1));
+        const op = {kind: previous, line: line.slice(1)};
+        hunk.ops.push(op);
+        if (previous !== '+') hunk.old.push(op.line);
+        if (previous !== '-') hunk.next.push(op.line);
         if (lines[i]?.startsWith('\\ No newline at end of file')) {
           i++;
-          if (previous !== '+') hunk.old[hunk.old.length - 1] = hunk.old.at(-1).replace(/\n$/, '');
-          if (previous !== '-') hunk.next[hunk.next.length - 1] = hunk.next.at(-1).replace(/\n$/, '');
+          hunk.ops.at(-1).line = hunk.ops.at(-1).line.replace(/\n$/, '');
+          if (previous !== '+') hunk.old[hunk.old.length - 1] = hunk.ops.at(-1).line;
+          if (previous !== '-') hunk.next[hunk.next.length - 1] = hunk.ops.at(-1).line;
         }
       }
       if (Math.abs(hunk.old.length - oldCount) > 3 || Math.abs(hunk.next.length - newCount) > 3)
@@ -59,17 +64,42 @@ export function parsePatch(diff) {
   return files;
 }
 
+const lineContents = line => line.replace(/\r?\n$/, '');
+const lineEnding = line => line?.endsWith('\r\n') ? '\r\n' : line?.endsWith('\n') ? '\n' : null;
+
 export function applyHunks(original, file) {
   const source = linesOf(original), output = [];
   let consumed = 0;
   for (const hunk of file.hunks) {
-    const expected = hunk.oldCount ? hunk.oldStart - 1 : hunk.oldStart;
-    const oldText = hunk.old.join('');
+    const expected = hunk.agent ? null : hunk.oldCount ? hunk.oldStart - 1 : hunk.oldStart;
     const matchesAt = pos => pos >= consumed && pos <= source.length &&
       pos + hunk.oldCount <= source.length &&
-      source.slice(pos, pos + hunk.oldCount).join('') === oldText;
+      hunk.old.every((line, i) => lineContents(source[pos+i]) === lineContents(line));
     let offset = expected;
-    if (!matchesAt(offset)) {
+    if (hunk.agent) {
+      let from = consumed;
+      if (hunk.anchor) {
+        const anchors = [];
+        for (let pos = consumed; pos < source.length; pos++) {
+          if (lineContents(source[pos]).trim().includes(hunk.anchor)) anchors.push(pos);
+        }
+        if (anchors.length !== 1) throw new Error('Agent patch anchor must appear exactly once: ' + hunk.anchor);
+        from = anchors[0];
+      }
+      if (!hunk.oldCount) {
+        if (!hunk.anchor) throw new Error('Ambiguous zero-context insertion: use a unique @@ anchor');
+        offset = from + 1;
+      } else {
+        const matches = [];
+        for (let pos = from; pos <= source.length - hunk.oldCount; pos++) {
+          if (matchesAt(pos)) matches.push(pos);
+          if (matches.length > 1) break;
+        }
+        if (matches.length !== 1)
+          throw new Error('Unique agent patch context required: ' + file.path + ' (matches=' + matches.length + ')');
+        offset = matches[0];
+      }
+    } else if (!matchesAt(offset)) {
       if (!hunk.oldCount) throw new Error('Ambiguous zero-context insertion: use exact coordinates');
       const positions = [];
       for (let pos = Math.max(consumed, expected - 20);
@@ -80,7 +110,22 @@ export function applyHunks(original, file) {
         throw new Error('Exact hunk context/line mismatch; unique patch context not found within 20 lines: ' + file.path + ' (matches=' + positions.length + ')');
       offset = positions[0];
     }
-    output.push(...source.slice(consumed, offset), ...hunk.next);
+    if (offset < consumed || offset > source.length) throw new Error('Invalid patch hunk location');
+    const nearby = source[offset] ?? source[offset-1];
+    const fallbackEnding = (lineEnding(nearby) ??
+      source.map(lineEnding).find(Boolean) ?? '\n');
+    output.push(...source.slice(consumed, offset));
+    // Context lines are emitted straight from the original file. Only
+    // inserted lines adopt local newline style, preserving mixed CRLF/LF.
+    let line = offset;
+    for (const op of hunk.ops ?? []) {
+      if (op.kind === ' ') output.push(source[line++]);
+      else if (op.kind === '-') line++;
+      else if (op.kind === '+') {
+        output.push(lineEnding(op.line) ? lineContents(op.line) + fallbackEnding : op.line);
+      }
+    }
+    if (!hunk.ops) output.push(...hunk.next);
     consumed = offset + hunk.oldCount;
   }
   output.push(...source.slice(consumed));
@@ -115,7 +160,7 @@ export async function applyPatch({ workspace, cwd, step }) {
     if (expected && hash(bytes) !== expected) throw new Error(`expected_sha256 mismatch: ${file.path}`);
     const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
     if (text.includes('\0')) throw new Error('Binary patches are unsupported');
-    const next = applyHunks(text, file);
+    const next = file.deleteAll ? '' : applyHunks(text, file);
     if (file.remove && next !== '') throw new Error('Delete patch must remove the complete file');
     if (Buffer.byteLength(next) > 8 * 1024 * 1024) throw new Error('Patched file exceeds 8 MiB');
     prepared.push({ file, target, bytes, next, mode: info ? info.mode & 0o777 : 0o660 });

@@ -83,7 +83,7 @@ def installed_baseline(source, target, release_files):
         expected = snapshot.get('files')
         if (snapshot.get('version') == '0.3.0'
                 and isinstance(expected, dict)
-                and set(expected) == set(release_files)):
+                and set(expected).issubset(set(release_files))):
             problems = []
             for name, checksum in expected.items():
                 validate_name(name)

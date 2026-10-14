@@ -182,9 +182,9 @@ test('core/interactive/legacy profiles share discovery and execution policy',asy
   const names=['start_process','read_process_output','interact_with_process','force_terminate','list_sessions','write_file','set_config_value','get_prompts'];
   for(const name of names){app.tools.push({name,inputSchema:{type:'object',properties:{}}});app.admin.names.add(name);app.admin.upstreamNames.add(name);}
   assert.equal(app.catalog().visible_count,16);const hash=app.catalog().sha256;
-  app.admin.settings.toolProfile='interactive';assert.equal(app.catalog().visible_count,21);
+  app.admin.settings.toolProfile='interactive';assert.equal(app.catalog().visible_count,22); // +1 opt-in job_input
   assert.equal(app.admin.allowed('set_config_value'),false);assert.equal(app.admin.allowed('write_file'),false);
-  app.admin.settings.toolProfile='legacy';assert.equal(app.catalog().visible_count,24);assert.notEqual(app.catalog().sha256,hash);
+  app.admin.settings.toolProfile='legacy';assert.equal(app.catalog().visible_count,25); // +1 opt-in job_inputassert.notEqual(app.catalog().sha256,hash);
   app.admin.settings.permissions.filesystemWrite=false;
   assert.equal(app.admin.allowed('write_file'),false);assert.equal(app.admin.allowed('start_process'),false);assert.equal(app.admin.allowed('read_process_output'),true);
   app.admin.settings.limits.callsPerMinute=1;app.admin.callTimes=[Date.now()];

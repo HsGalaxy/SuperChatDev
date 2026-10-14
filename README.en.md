@@ -118,4 +118,4 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 
 **Limitations:** Single trusted owner only, not a multi-tenant sandbox. MCP cannot disable ChatGPT's own approval dialogs or force OAuth refresh support in every client. Jobs may survive HTTP gateway restarts, but a host reboot does not automatically resume running commands.
 
-**License:** [MIT](LICENSE) · **Current runtime:** v0.3.2
+**License:** [MIT](LICENSE) · **Current runtime:** v0.3.3

@@ -17,7 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.
 
 Without `--lang en`, the language menu defaults to Simplified Chinese. You can still select English by entering `2` at the first prompt.
 
-The bootstrap downloads the project archive via HTTPS, verifies safe archive paths, then runs the local Python wizard against the downloaded release. The installer checks the 31-file release manifest before making runtime changes. Remote code is run with root privileges: **review and trust the source before executing**.
+The bootstrap downloads the project archive via HTTPS, verifies safe archive paths, then runs the local Python wizard against the downloaded release. The installer checks the release SHA-256 manifest before making runtime changes. Remote code is run with root privileges: **review and trust the source before executing**.
 
 For script review:
 

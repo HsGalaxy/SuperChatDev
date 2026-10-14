@@ -113,7 +113,7 @@ class LegacyUpgradeTests(unittest.TestCase):
         self.public.write_text(json.dumps(item))
         done = self.execute("upgrade")
         self.assertNotEqual(done.returncode, 0)
-        self.assertIn("certified legacy baseline", done.stderr)
+        self.assertRegex(done.stderr, "certified legacy baseline|Production file changed")
 
 
 

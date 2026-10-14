@@ -22,3 +22,24 @@ Still 16 Core tools; an additive `replace` step was added to workspace_execute (
 ## Exact snippet replacement
 
 Use a `workspace_execute` step `{"type":"replace","path":"config.txt","old_text":"PORT=3000","new_text":"PORT=8080","expected_sha256":"<sha256 from fs_read>"}`. The original snippet must occur exactly once, and the current file hash must match. Changes use the unprivileged file worker and a bounded atomic rename. Refresh the published ChatGPT app actions to expose the new step type.
+
+## v0.3.3: Head/tail output, line-number-free patches, optional PTY
+
+Completed jobs expose a bounded `output_preview` (head, omission marker, tail) when output exceeds the response budget. The existing `output`, `offset` and `next_offset` contracts remain unchanged. A separate 64 KiB rolling tail retains terminal errors beyond the original log cap, and workspace `exec` steps propagate the preview.
+
+`workspace_execute` patches support traditional Unified Diff as well as a no-line-number form:
+
+```text
+*** Begin Patch
+*** Update File: src/config.js
+@@
+-const PORT = 3000;
++const PORT = 8080;
+*** End Patch
+```
+
+The original snippet must match **exactly and uniquely**; an `@@ function name` anchor can narrow the region. There is no permissive whitespace or punctuation matching. Unmodified CRLF/LF text is preserved and new lines adopt the local line-ending style. Use `expected_sha256` for optimistic concurrency control.
+
+The default Core still has **16 tools**. Interactive/legacy profiles expose `job_input`; use `job_start` with `tty:true` followed by bounded `job_input` (up to 4 KiB) and `job_read`. Requires util-linux `script`. Pass a stable `request_id` to `job_input` for safe identical retries within the same live session; conflicting reuse is refused. The terminal may echo typed input; never type secrets before understanding echo behavior. Refresh/review/publish the ChatGPT app action definitions for the new `tty` property and interactive tool.
+
+Admission uses a durable active-job index rather than scanning all historical tasks. The original cross-process `flock` remains; there is **no Bubblewrap or handle-relative writer change**.

@@ -17,6 +17,7 @@ export function toolRequirements(name, args = {}, upstream = false) {
     return result;
   }
   if (RECOVERY.has(name) || name === 'dev_get_guide') return [];
+  if (name === 'job_input') return ['jobs','commandExecution','filesystemRead','filesystemWrite'];
   if (name === 'file_import') return ['fileTransfer','filesystemWrite'];
   if (name === 'file_unpack') return ['fileTransfer','filesystemRead','filesystemWrite'];
   if (name === 'file_export') return ['fileTransfer','filesystemRead'];
@@ -25,8 +26,8 @@ export function toolRequirements(name, args = {}, upstream = false) {
   if (name === 'workspace_execute') {
     const result = new Set(['workspace']);
     for (const step of Array.isArray(args.steps) ? args.steps : []) {
-      if (['write','mkdir','patch'].includes(step.type)) result.add('filesystemWrite');
-      if (step.type === 'patch') result.add('filesystemRead');
+      if (['write','replace','mkdir','patch'].includes(step.type)) result.add('filesystemWrite');
+      if (step.type === 'patch' || step.type === 'replace') result.add('filesystemRead');
       if (['exec','container_build'].includes(step.type)) {
         for (const permission of ['commandExecution','filesystemRead','filesystemWrite']) result.add(permission);
       }
@@ -42,6 +43,7 @@ export function denialReason(settings, name, args = {}, upstream = false) {
   if (settings.blockedTools.includes(name)) return 'disabled by the administrator';
   const profile = settings.toolProfile ?? 'core';
   if (upstream && (profile === 'core' || (profile === 'interactive' && !INTERACTIVE_TOOLS.has(name)))) return 'not exposed by the selected tool profile';
+  if (!upstream && name === 'job_input' && profile === 'core') return 'job_input requires interactive or legacy tool profile';
   for (const requirement of toolRequirements(name, args, upstream)) {
     if (settings.permissions[requirement] === false) return 'disabled by the administrator (' + requirement + ')';
   }

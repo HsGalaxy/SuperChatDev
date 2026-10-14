@@ -49,3 +49,24 @@ SuperChatDev **Core 模式共 16 个工具**，尽量让模型一眼知道什么
 ```
 
 要求旧文本在文件中恰好出现一次，且当前文件哈希与阅读时一致，否则拒绝覆盖。它仍通过受限的 Job worker 执行，不绕过文件锁与 Linux 权限。
+
+## v0.3.3：首尾日志、无行号补丁与可选 PTY
+
+**长日志不再丢失最终错误。** `job_start` / `job_read` 在已完成任务输出超过预算时，新增 `output_preview`，保留开头、末尾及省略字节数。原来的 `output`、`offset`、`next_offset`、`has_more` 保持兼容。原始日志达到保存上限时，系统另存最多 64 KiB 的尾部；`workspace_execute` 的 `exec` 步骤也能返回摘要。
+
+**无行号 Patch。** 仍可使用 Unified Diff，也可以使用更容易由 LLM 生成的格式：
+
+```text
+*** Begin Patch
+*** Update File: src/config.js
+@@
+-const PORT = 3000;
++const PORT = 8080;
+*** End Patch
+```
+
+旧文本必须唯一精确匹配；重复时可以用 `@@ 函数签名` 限定范围。不会自动模糊忽略缩进或改写引号。补丁会保留未修改行的 CRLF/LF，新行沿用局部换行格式。继续建议提供 `expected_sha256`。
+
+**PTY 是可选模式。** 默认 Core 仍然是 **16 个工具**。在管理后台改为 `interactive` 或 `legacy` 后，`job_start` 可指定 `tty:true`，使用 `job_input` 发送文字，再用 `job_read` 获取输出。系统需要 util-linux 的 `script`；每次输入最多 4 KiB，Socket 限制为仅服务账户可访问。 对有副作用的输入，可为 `job_input` 提供稳定的 `request_id`；同一任务内重复发送相同请求不会再次输入，修改相同 ID 的内容会被拒绝。PTY 可能回显密码，因此输入敏感信息前必须了解终端的回显策略。客户端需要刷新、审核并发布动作。
+
+**性能：** Job 准入由扫描所有历史任务改为只核对私有状态目录下的活跃标记。旧安装首次启动时迁移索引，`job_list` 仍保留完整历史查询。保留跨进程 `flock` 以防止竞态；**不引入 Bubblewrap、不改安全文件写入机制**。
