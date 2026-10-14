@@ -18,7 +18,7 @@ const hash=t=>createHash('sha256').update(JSON.stringify({inputSchema:t.inputSch
 test('frozen core API matches published client schema',async()=>{
   assert.deepEqual([...byName.keys()],names);
   assert.equal(byName.size,core.length);
-  const snap=JSON.parse(await readFile(path.join(dirname,'contracts/core-tools-v0.3.3.json'),'utf8'));
+  const snap=JSON.parse(await readFile(path.join(dirname,'contracts/core-tools-v0.3.5.json'),'utf8'));
   assert.deepEqual(Object.fromEntries(names.map(n=>[n,hash(byName.get(n))])),snap.hashes,'Changed schema: coordinate client action refresh before shipping');
 });
 test('ChatGPT attachment and development handoff contracts are explicit',()=>{

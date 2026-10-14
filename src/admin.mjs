@@ -8,6 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { atomicJSON, readJSON, requireInteger } from './common.mjs';
 import { AdminFiles } from './admin-files.mjs';
 import { GitAdmin } from './git-admin.mjs';
+import { PerformanceLog, DEFAULT_PERFORMANCE, validatePerformance } from './performance.mjs';
 import { PROFILES, denialReason, LEGACY_TOOL_NAMES } from './policy.mjs';
 
 const MiB = 1024 * 1024;
@@ -45,13 +46,14 @@ export function defaultAdminSettings(config) {
     blockedTools: [],
     toolProfile: config.toolProfile || 'core',
     oauth: defaultOAuth(),
-    security: defaultSecurity()
+    security: defaultSecurity(),
+    performance:{...DEFAULT_PERFORMANCE}
   };
 }
 
 export function validateAdminSettings(input, toolNames) {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
-      Object.keys(input).some(x => !['permissions', 'limits', 'downloadOrigins', 'blockedTools', 'oauth', 'security', 'toolProfile'].includes(x))) throw new Error('Invalid settings document');
+      Object.keys(input).some(x => !['permissions', 'limits', 'downloadOrigins', 'blockedTools', 'oauth', 'security', 'performance', 'toolProfile'].includes(x))) throw new Error('Invalid settings document');
   const { downloadOrigins, blockedTools } = input;
   const permissions={filesystemRead:true,filesystemWrite:true,...input.permissions};
   const limits={maxJobLogMB:16,...input.limits};
@@ -104,7 +106,8 @@ export function validateAdminSettings(input, toolNames) {
     if(!Number.isSafeInteger(security[key]))throw new Error('Missing or invalid session value: '+key);
     requireInteger(security[key], null, min, max, key); }
   return { toolProfile, permissions: clone(permissions), limits: clone(limits), downloadOrigins: cleanedOrigins,
-    blockedTools: [...blockedTools], oauth: clone(oauth), security: clone(security) };
+    blockedTools: [...blockedTools], oauth: clone(oauth), security: clone(security),
+    performance:validatePerformance(input.performance ?? {}) };
 }
 
 export class AdminConsole {
@@ -120,6 +123,7 @@ export class AdminConsole {
     this.failedLogins = [];
     this.adminFiles = new AdminFiles(config.workspace);
     this.gitAdmin = new GitAdmin(config);
+    this.performance = new PerformanceLog(config.dataRoot);
     this.prevCPU = null;
     this.callTimes = [];
     this.saveQueue = Promise.resolve();
@@ -137,6 +141,7 @@ export class AdminConsole {
     // Preserve exact environment byte limits until a saved admin override exists.
     await this.oauth.setPolicy(this.settings.oauth);
     if (restored) { this.apply(); await this.traces.prune(); }
+    else {this.performance.configure(this.settings.performance); this.traces.configureDebug(false);}
   }
 
   apply() {
@@ -150,6 +155,8 @@ export class AdminConsole {
     // New detached coordinators inherit changes; already running ones have a snapshot.
     this.workspaceBatches.config.maxJobs = limits.maxJobs;
     this.traces.maxRecords = limits.traceRetention;
+    this.traces.configureDebug(this.settings.performance.enabled);
+    this.performance.configure(this.settings.performance);
   }
 
   async save(input) {
@@ -396,6 +403,38 @@ export class AdminConsole {
       await this.audit('git.'+action);
       json(res,200,result);
       return true;
+    }
+    if (p === '/admin/api/performance' && req.method === 'GET') {
+      const limit=requireInteger(Number(url.searchParams.get('limit') || 100),100,1,500,'limit');
+      json(res,200,await this.performance.summary(limit)); return true;
+    }
+    if (p === '/admin/api/performance/trace' && req.method === 'GET') {
+      const trace_id=url.searchParams.get('trace_id');
+      if(!trace_id)throw new Error('trace_id is required');
+      json(res,200,await this.traces.read({trace_id,limit:1})); return true;
+    }
+    if (p === '/admin/api/performance/download' && req.method === 'GET') {
+      const body=await this.performance.download();
+      res.writeHead(200,{'Content-Type':'application/x-ndjson; charset=utf-8',
+        'Content-Disposition':'attachment; filename="mcp-performance.jsonl"',
+        'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
+        'Content-Length':body.length});
+      res.end(body);return true;
+    }
+    if (p === '/admin/api/performance' && req.method === 'PUT') {
+      const submitted=JSON.parse(await readBody(req,4096));
+      const verified=validatePerformance(submitted);
+      await this.save({...this.settings,performance:verified});
+      json(res,200,{settings:{...this.settings.performance},saved:true});return true;
+    }
+    if (p === '/admin/api/performance/clear' && req.method === 'POST') {
+      const submitted=JSON.parse(await readBody(req,2048));
+      if(!equal(submitted.password,this.password)){
+        json(res,403,{error:'Admin password confirmation failed'});return true;
+      }
+      await this.performance.clear();
+      await this.audit('performance.clear');
+      json(res,200,{cleared:true});return true;
     }
     if (p === '/admin/api/oauth/status' && req.method === 'GET') {
       json(res, 200, this.oauth.status()); return true;

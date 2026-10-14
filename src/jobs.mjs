@@ -8,7 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { atomicJSON, readJSON, requireInteger, scopedPath } from './common.mjs';
 
 import { executionEnvironment } from './environment.mjs';
-import { currentTrace } from './trace.mjs';
+import { currentTrace, tracePoint } from './trace.mjs';
 import { headUtf8, tailUtf8 } from './head-tail.mjs';
 
 const workerPath = fileURLToPath(new URL('./job-worker.mjs', import.meta.url));
@@ -25,6 +25,14 @@ export async function processIdentity(pid) {
     if (error.code === 'ENOENT' || error.code === 'ESRCH') return null;
     throw error;
   }
+}
+
+// Inspired by interactive REPL prompt handling; deliberately a heuristic,
+// not an execution state guarantee. Handles common shells and Python/IPython.
+export function looksLikePrompt(output=''){
+  if(typeof output!=='string'||!output)return false;
+  const tail=output.slice(-300).replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').replace(/\r/g,'');
+  return /(?:^|\n)(?:>>> |\.\.\. |In \[\d+\]: ?|PS [^\n>]{0,60}> ?|[#$] ?|[A-Za-z0-9_./@~:\-]{1,70}[#$>] ?)$/.test(tail);
 }
 
 export class Jobs {
@@ -139,6 +147,7 @@ export class Jobs {
     }
     const request = args.request_id; delete args.request_id;
     if (request !== undefined && !/^[A-Za-z0-9_-]{1,64}$/.test(request)) throw new Error('request_id must be 1..64 letters, digits, underscores or hyphens');
+    tracePoint('job.admission.begin');
     const pending = this.launchQueue.then(() => this.withAdmissionLock(async () => {
       if (!request) return this.startInternal(args);
       // Keep a reservation BEFORE spawning. An ambiguous crash never replays writes.
@@ -157,6 +166,7 @@ export class Jobs {
     }));
     this.launchQueue = pending.catch(() => {});
     const job = await pending;
+    tracePoint('job.admission.end');
     if (!wait) return job;
     const deadline = Date.now() + wait;
     let result;
@@ -167,6 +177,7 @@ export class Jobs {
       // never wait out the remaining budget after a terminal result.
       await delay(Math.min(35, Math.max(1, deadline - Date.now())));
     } while (true);
+    tracePoint('job.fastwait.end');
     return {...result, ...(job.reused ? {reused:true} : {})};
   }
 
@@ -251,17 +262,22 @@ export class Jobs {
   }
 
   async read(args) {
+    tracePoint('job.read.begin');
     const wait = requireInteger(args.wait_ms, 0, 0, 10000, 'wait_ms');
     const deadline = Date.now() + wait;
     let result;
     do {
       result = await this.readOnce(args);
-      if (result.output || terminalStates.has(result.status) || Date.now() >= deadline) return result;
+      if (result.output || terminalStates.has(result.status) || Date.now() >= deadline) {
+        tracePoint('job.read.end');
+        return result;
+      }
       await delay(Math.min(200, Math.max(1, deadline - Date.now())));
     } while (true);
   }
 
-  async readOnce({ job_id, offset = 0, max_bytes }) {
+  async readOnce({ job_id, offset = 0, max_bytes, tail_lines }) {
+    if(tail_lines!==undefined)requireInteger(tail_lines,null,1,200,'tail_lines');
     const position = requireInteger(offset, 0, 0, Number.MAX_SAFE_INTEGER, 'offset');
     const limit = requireInteger(max_bytes, 32768, 1, 262144, 'max_bytes');
     const state = await this.status(job_id);
@@ -317,11 +333,39 @@ export class Jobs {
           result.preview_tail_unavailable = true;
         }
       }
+      if(state.tty) {
+        let terminalText=result.output;
+        if(!terminalText && result.status==='running' && size){
+          const n=Math.min(512,size);
+          const tail=Buffer.alloc(n);
+          const read=await file.read(tail,0,n,size-n);
+          terminalText=tail.subarray(0,read.bytesRead).toString('utf8');
+        }
+        const prompt=looksLikePrompt(terminalText);
+        result.interaction={
+          state: terminalStates.has(state.status)?'completed':prompt?'awaiting_input':result.output?'output_available':'running',
+          prompt_detected:prompt,heuristic:true,
+          next_step:terminalStates.has(state.status)?'Inspect exit_code':prompt?'Use job_input to reply; send newline to submit':'Use job_read with next_offset to await more output'
+        };
+      }
+      if(tail_lines!==undefined){
+        const n=Math.min(size,65536);
+        const tail=Buffer.alloc(n);
+        const read=await file.read(tail,0,n,size-n);
+        const content=tailUtf8(tail.subarray(0,read.bytesRead));
+        const endsInNewline=/\r?\n$/.test(content);
+        const lines=content.split(/\r?\n/);
+        if(endsInNewline)lines.pop();
+        result.output_tail=lines.slice(-tail_lines).join('\n')+(endsInNewline?'\n':'');
+        result.output_tail_complete=size<=65536;
+      }
       return result;
     } finally { await file.close(); }
   }
 
-  async input({ job_id, chars, offset, max_bytes, wait_ms = 250, request_id } = {}) {
+  async input({ job_id, chars, offset, max_bytes, wait_ms = 250, wait_for_prompt = false, request_id } = {}) {
+    tracePoint('pty.input.begin');
+    if(typeof wait_for_prompt!=='boolean')throw new Error('wait_for_prompt must be boolean');
     const state=await this.status(job_id);
     if (!state.tty) throw new Error('Job does not have a PTY; start it with tty:true');
     if (terminalStates.has(state.status)) throw new Error('PTY job already finished');
@@ -346,9 +390,33 @@ export class Jobs {
       socket.once('close',()=>clearTimeout(timer));
     });
     if (!['OK','REUSED'].includes(acknowledgement)) throw new Error('PTY rejected input: '+acknowledgement);
-    // Default to the start so the opening PTY prompt is not silently lost.
-    // Pass the previous next_offset to avoid repeated output.
-    const result=await this.read({job_id,offset:after,max_bytes,wait_ms});
+    tracePoint('pty.input.ack');
+    // In prompt-wait mode, accumulate incremental output until the process
+    // exits, a recognizable REPL prompt arrives or the explicit deadline passes.
+    // Never resend stdin due to missing output, and preserve byte offsets.
+    let result;
+    if(wait_for_prompt && wait_ms>0){
+      const deadline=Date.now()+wait_ms;
+      const limit=requireInteger(max_bytes,32768,1,262144,'max_bytes');
+      let cursor=after,output='',last;
+      for(;;){
+        last=await this.readOnce({job_id,offset:cursor,max_bytes:Math.max(1,limit-Buffer.byteLength(output))});
+        output+=last.output||'';
+        cursor=last.next_offset;
+        const prompt=looksLikePrompt(output) && !last.has_more;
+        if(prompt || terminalStates.has(last.status) || Buffer.byteLength(output)>=limit ||
+           Date.now()>=deadline){
+          result={...last,output,next_offset:cursor,
+            interaction:{state:terminalStates.has(last.status)?'completed':prompt?'awaiting_input':'running',
+              prompt_detected:prompt,heuristic:true,
+              next_step:prompt?'The process is ready for further input':'Use job_read with next_offset'}};
+          break;
+        }
+        if(!last.has_more)await delay(Math.min(80,Math.max(1,deadline-Date.now())));
+      }
+      result.waited_for_prompt=true;
+    }else result=await this.read({job_id,offset:after,max_bytes,wait_ms});
+    tracePoint('pty.input.end');
     return {...result,input_accepted:true,input_reused:acknowledgement==='REUSED',input_bytes:Buffer.byteLength(chars)};
   }
 
@@ -390,18 +458,19 @@ export const jobTools = [
   },
   {
     name: 'job_read', title: 'Read job status and incremental logs',
-    description: 'Read durable status and a bounded log chunk; on terminal long jobs output_preview retains head and tail, even past the log cap. (up to 3 extra bytes to keep UTF-8 intact). Command arguments are omitted unless include_command is true. Reuse next_offset as offset. While queued/running set wait_ms=1000..10000 to wait briefly for output or completion instead of busy polling. Terminal states: succeeded, failed, cancelled, interrupted. Check exit_code and drain logs while has_more is true; empty output does not mean success. Logs are stdout and stderr combined.',
-    inputSchema: { type: 'object', properties: { include_command: {type:'boolean'}, job_id: { type: 'string' }, offset: { type: 'integer', minimum: 0 }, max_bytes: { type: 'integer', minimum: 1, maximum: 262144 }, wait_ms: { type: 'integer', minimum: 0, maximum: 10000 } }, required: ['job_id'], additionalProperties: false },
+    description: 'Read durable status and a bounded log chunk; optional tail_lines returns the most recent lines without changing the byte cursor. PTY sessions include heuristic prompt/awaiting-input indicators. On terminal long jobs output_preview retains head and tail, even past the log cap. (up to 3 extra bytes to keep UTF-8 intact). Command arguments are omitted unless include_command is true. Reuse next_offset as offset. While queued/running set wait_ms=1000..10000 to wait briefly for output or completion instead of busy polling. Terminal states: succeeded, failed, cancelled, interrupted. Check exit_code and drain logs while has_more is true; empty output does not mean success. Logs are stdout and stderr combined.',
+    inputSchema: { type: 'object', properties: { include_command: {type:'boolean'}, job_id: { type: 'string' }, offset: { type: 'integer', minimum: 0 }, max_bytes: { type: 'integer', minimum: 1, maximum: 262144 }, tail_lines:{type:'integer',minimum:1,maximum:200}, wait_ms: { type: 'integer', minimum: 0, maximum: 10000 } }, required: ['job_id'], additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: false }
   },
   {
     name: 'job_input', title: 'Send text to an interactive PTY job',
-    description: 'Opt-in interactive/legacy profile only. Send UTF-8 chars to a tty:true job (include \\n for Enter or \\u0003 for Ctrl+C); poll subsequent output without rebuilding the process. Never send secrets unless you control terminal echo. PTY input is not persisted after the job finishes.',
+    description: 'Opt-in interactive/legacy profile only. Send UTF-8 chars to a tty:true job (include \\n for Enter or \\u0003 for Ctrl+C). Optional wait_for_prompt=true waits for a recognized REPL prompt, completion or timeout, returning new output without resending stdin. Never send secrets unless you control terminal echo. PTY input is not persisted after the job finishes.',
     inputSchema: { type: 'object', additionalProperties: false, properties: {
       job_id: {type:'string'}, chars: {type:'string',minLength:1,maxLength:4096},
       request_id: {type:'string',description:'Optional stable action ID. Identical retries are acknowledged without retyping into the PTY.'},
       offset: {type:'integer',minimum:0}, max_bytes:{type:'integer',minimum:1,maximum:262144},
-      wait_ms:{type:'integer',minimum:0,maximum:10000,default:250}
+      wait_ms:{type:'integer',minimum:0,maximum:10000,default:250},
+      wait_for_prompt:{type:'boolean',default:false,description:'Collect output until a detected shell/REPL prompt, process exit or wait_ms deadline. Heuristic only.'}
     }, required:['job_id','chars'] },
     annotations: {readOnlyHint:false,destructiveHint:true,openWorldHint:true}
   },

@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { createHash } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { createReadStream } from 'node:fs';
 import { mkdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
@@ -7,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream/promises';
 import { clarifyProcessResult } from './process-status.mjs';
 import { validateExecutionEnv } from './environment.mjs';
-import { Traces } from './trace.mjs';
+import { Traces, tracePoint } from './trace.mjs';
 import { AdminConsole } from './admin.mjs';
 import { toolResult } from './common.mjs';
 import { Files, fileTools } from './files.mjs';
@@ -34,8 +35,10 @@ export async function readBody(req, limit = 1024 * 1024) {
 }
 
 export function json(res, status, value) {
+  const encoded=JSON.stringify(value);
+  if(res._mcpPerf)res._mcpPerf.response_bytes=Buffer.byteLength(encoded);
   res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-  res.end(JSON.stringify(value));
+  res.end(encoded);
 }
 
 export async function createApp(config) {
@@ -73,7 +76,7 @@ export async function createApp(config) {
   };
   const catalog=()=>{
     const visible=admin.visibleTools();
-    return {version:'0.3.4',profile:admin.settings.toolProfile,
+    return {version:'0.3.5',profile:admin.settings.toolProfile,
       sha256:createHash('sha256').update(JSON.stringify(visible)).digest('hex'),
       visible_tools:visible.map(t=>t.name),registered_count:tools.length,visible_count:visible.length,
       upstream:upstream?.status() || {configured:false,connected:false},
@@ -86,8 +89,11 @@ export async function createApp(config) {
   if (upstream?.info.capabilities.prompts) capabilities.prompts = {};
 
   async function dispatch(method, params = {}) {
-    if (method === 'tools/call') return traces.call(localNames.has(params.name) || upstreamNames.has(params.name) ? params.name : 'unknown_tool', upstreamNames.has(params.name) ? 'desktop_commander' : 'gateway', () => dispatchTool(params));
-    if (method === 'initialize') return { protocolVersion: versions.includes(params.protocolVersion) ? params.protocolVersion : '2025-03-26', capabilities, serverInfo: { name: 'chatgpt-dev-mcp', version: '0.3.4' }, instructions: serverInstructions };
+    if (method === 'tools/call') return traces.call(localNames.has(params.name) || upstreamNames.has(params.name) ? params.name : 'unknown_tool', upstreamNames.has(params.name) ? 'desktop_commander' : 'gateway', async()=>{
+      tracePoint('dispatch.begin', {argument_fields:Object.keys(params.arguments||{}).length});
+      return await dispatchTool(params);
+    });
+    if (method === 'initialize') return { protocolVersion: versions.includes(params.protocolVersion) ? params.protocolVersion : '2025-03-26', capabilities, serverInfo: { name: 'chatgpt-dev-mcp', version: '0.3.5' }, instructions: serverInstructions };
     if (method === 'ping') return {};
     if (method === 'tools/list') return { tools: admin.visibleTools(), _meta: {'starix/catalog_sha256':catalog().sha256} };
     if (method === 'resources/list') {
@@ -108,7 +114,9 @@ export async function createApp(config) {
   async function dispatchTool(params) {
       let args = params.arguments || {};
       try {
+        tracePoint('policy.begin');
         args = admin.enforce(params.name, args);
+        tracePoint('policy.end');
         switch (params.name) {
           case 'dev_get_guide': {
             const guide = developmentGuide({ workspace, upstreamTools:upstreamTools.filter(t=>admin.allowed(t.name)), executionEnv: config.executionEnv, containerBuildSocket: config.containerBuildSocket, catalog:catalog() });
@@ -150,21 +158,38 @@ export async function createApp(config) {
           /request_id|reservation/.test(error.message)?'Inspect existing jobs/batches before any retry; do not create a duplicate operation.':
           'Check arguments, path and permissions. A tool error is not successful completion.';
         return toolResult({error:{code:error.code || 'TOOL_ERROR',message:error.message},next_step:hint},{isError:true});
+      } finally {
+        tracePoint('dispatch.end');
       }
     }
 
   const server = http.createServer(async (req, res) => {
+    const requestStarted=performance.now();
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     try {
       const url = new URL(req.url, config.publicBaseURL || 'http://localhost');
+      if(url.pathname==='/mcp' && admin.performance.enabled()){
+        const meta={method:'unparsed',request_bytes:0,read_body_ms:0,parse_ms:0,
+          dispatch_ms:0,response_bytes:0};
+        res._mcpPerf=meta;
+        let recorded=false;
+        const record=()=>{
+          if(recorded)return;
+          recorded=true;
+          admin.performance.capture({...meta,status:res.statusCode,
+            duration_ms:performance.now()-requestStarted});
+        };
+        res.once('finish',record);
+        res.once('close',()=>{if(!res.writableFinished)record();});
+      }
       // Browser form submissions can carry an opaque Origin ("null"), including
       // under a no-referrer policy. Authorization forms remain protected by a
       // single-use nonce, password, registered redirect and PKCE. Keep the MCP
       // transport's DNS-rebinding protection and other endpoints strict.
       const opaqueAuthorizationOrigin = req.headers.origin === 'null' && url.pathname === '/oauth/authorize' && ['GET', 'POST'].includes(req.method);
       if (req.headers.origin && !config.httpOrigins?.includes(req.headers.origin) && !opaqueAuthorizationOrigin) { json(res, 403, { error: 'Origin not allowed' }); return; }
-      if (url.pathname === '/health' && req.method === 'GET') { json(res, 200, { ok: true, version:'0.3.4' }); return; }
+      if (url.pathname === '/health' && req.method === 'GET') { json(res, 200, { ok: true, version:'0.3.5' }); return; }
       if (await admin.handle(req, res, url, readBody, json)) return;
       if (await oauth.handle(req, res, url, readBody, json)) return;
       if (url.pathname.startsWith('/artifacts/') && (req.method === 'GET' || req.method === 'HEAD')) {
@@ -184,14 +209,45 @@ export async function createApp(config) {
       if (!req.headers['content-type']?.includes('application/json')) { json(res, 415, { error: 'Expected application/json' }); return; }
       if (req.headers['mcp-protocol-version'] && !versions.includes(req.headers['mcp-protocol-version'])) { json(res, 400, { error: 'Unsupported MCP protocol version' }); return; }
       let message;
-      try { message = JSON.parse(await readBody(req)); }
-      catch { json(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error or request too large' } }); return; }
+      try {
+        const readStarted=performance.now();
+        const raw=await readBody(req);
+        if(res._mcpPerf){
+          res._mcpPerf.read_body_ms=performance.now()-readStarted;
+          res._mcpPerf.request_bytes=Buffer.byteLength(raw);
+        }
+        const parseStarted=performance.now();
+        message=JSON.parse(raw);
+        if(res._mcpPerf)res._mcpPerf.parse_ms=performance.now()-parseStarted;
+      } catch {
+        json(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error or request too large' } }); return;
+      }
       if (!message || Array.isArray(message) || message.jsonrpc !== '2.0' || typeof message.method !== 'string' || (message.params !== undefined && (!message.params || typeof message.params !== 'object' || Array.isArray(message.params)))) {
         json(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid request' } }); return;
       }
+      if(res._mcpPerf){
+        res._mcpPerf.method=message.method;
+        if(message.method==='tools/call')res._mcpPerf.tool=(localNames.has(message.params?.name)||upstreamNames.has(message.params?.name))?message.params.name:'unknown_tool';
+      }
       if (message.id === undefined) { res.writeHead(202); res.end(); return; }
-      try { json(res, 200, { jsonrpc: '2.0', id: message.id, result: await dispatch(message.method, message.params) }); }
-      catch (error) { json(res, 200, { jsonrpc: '2.0', id: message.id, error: { code: error.rpcCode || -32603, message: error.message } }); }
+      const dispatchStarted=performance.now();
+      try {
+        const result=await dispatch(message.method,message.params);
+        if(res._mcpPerf){
+          res._mcpPerf.dispatch_ms=performance.now()-dispatchStarted;
+          res._mcpPerf.trace_id=result?._meta?.['dev/trace_id'];
+          if(res._mcpPerf.trace_id)res._mcpPerf.stages=traces.takeDebug(res._mcpPerf.trace_id);
+          // Tools encode their logical errors in isError while HTTP remains 200.
+          res._mcpPerf.tool_error=result?.isError===true ? 1 : 0;
+        }
+        json(res, 200, { jsonrpc: '2.0', id: message.id, result });
+      } catch (error) {
+        if(res._mcpPerf){
+          res._mcpPerf.dispatch_ms=performance.now()-dispatchStarted;
+          res._mcpPerf.rpc_error=1;
+        }
+        json(res, 200, { jsonrpc: '2.0', id: message.id, error: { code: error.rpcCode || -32603, message: error.message } });
+      }
     } catch (error) {
       if (!res.headersSent) json(res, 400, { error: error.message });
       else res.destroy();

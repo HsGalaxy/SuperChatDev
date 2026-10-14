@@ -81,3 +81,11 @@ SuperChatDev **Core 模式共 16 个工具**，尽量让模型一眼知道什么
 - **项目绑定**：填写工作区内项目的相对路径，将该仓库的 `origin pushurl` 配置成 SSH 专属别名。原来的 fetch URL 不变；不会自动 push、commit 或执行任意仓库脚本。
 
 敏感动作需要重新输入管理员密码并通过 CSRF；私钥在命令执行用户的 SSH 目录下保存，网页端不可读取。GitHub 上仍需手动添加公钥并勾选 Allow write access。普通 MCP 工具数量保持不变，无需刷新客户端 Tool Schema。
+
+## v0.3.5：性能调试与交互增强
+
+- Admin 左侧 **性能调试** 可开启/关闭详细日志，查看 P50/P95/P99 与最近请求的耗时、错误、输入/输出字节数、JSON 解析与工具派发耗时，按 Trace ID 查看阶段时间线。
+- 下载的 JSONL 只包含方法、工具名称、状态、用时、字节数和内部安全阶段标签；不包含请求参数、命令、输出、凭据或 URL。默认关闭，按 1–32 MiB 轮转，保留最近两份日志，删除日志需要管理员密码。
+- `job_read` 支持 `tail_lines`（1–200），输出 `output_tail` 但保留原 `output` / `next_offset`。TTY 作业另有 `interaction.state`，提示符识别可能误判。
+- `job_input` 可选 `wait_for_prompt: true`，结合 `wait_ms` 在实际 PTY 中等待下一次 REPL 提示符、进程结束或超时，不会重新发送已确认的输入。仍推荐为交互动作设置稳定的 `request_id`。
+- 运行时改变了可选的 MCP 工具字段，因此更新生产环境后，在 ChatGPT App 中刷新、审核并发布工具定义。原有 Core 工具数量不变。

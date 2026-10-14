@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.5 — Opt-in MCP performance tracing and interactive terminal ergonomics
+
+- New **Admin → 性能调试 / Performance Diagnostics** toggle, bounded rotated JSONL downloads, P50/P95/P99 summary and per-call Trace timeline. Default OFF and never records request arguments, auth headers, commands, outputs or exception text.
+- Captures server HTTP body read, JSON parsing, dispatch timing, request/response sizes, RPC and tool error flags, plus safe internal tool/admission/PTY stage timestamps; log size and slow-call threshold are configurable and settings persist across service restart.
+- PTY enhancements inspired by Desktop Commander UX: optional prompt-aware `job_input.wait_for_prompt`, heuristic process input state, and `job_read.tail_lines` for recent output without advancing the durable byte cursor. PTY request-id cache is bounded without unsafe eviction.
+- Faster exact Trace ID lookups by listing filenames and reading one matching JSON instead of parsing the entire trace history.
+- Maintains the privilege separation, OAuth/CSRF gates, existing job log caps and safe log redaction.
+- `job_read` and `job_input` schemas changed: refresh, review and publish the ChatGPT app's MCP action definitions after upgrading.
+
 ## 0.3.4 — Admin Git / GitHub configuration
 
 - Adds a dedicated **Git / GitHub** Admin page for commit author name/email, per-repository ED25519 SSH Deploy Keys, key import, existing-key adoption, GitHub repository read checks, and scoped `origin` push URL configuration.

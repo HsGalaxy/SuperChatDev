@@ -9,5 +9,5 @@ import {reviewTool} from '../src/review.mjs';
 const tools=[guideTool,...fileTools,...codeTools,...jobTools.filter(t=>t.name!=='job_input'),...workspaceTools,reviewTool];
 const hashes=Object.fromEntries(tools.map(t=>[t.name,createHash('sha256').update(JSON.stringify({inputSchema:t.inputSchema,fileParams:t._meta?.['openai/fileParams']||[],annotations:t.annotations||{}})).digest('hex')]));
 await mkdir('test/contracts',{recursive:true});
-await writeFile('test/contracts/core-tools-v0.3.3.json',JSON.stringify({version:'0.3.3',hashes},null,2)+'\n');
+await writeFile('test/contracts/core-tools-v0.3.5.json',JSON.stringify({version:'0.3.5',hashes},null,2)+'\n');
 console.log('Saved',Object.keys(hashes).length,'tool contracts');

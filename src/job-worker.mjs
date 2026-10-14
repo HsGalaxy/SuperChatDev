@@ -100,6 +100,10 @@ try {
           const digest=createHash('sha256').update(item.chars).digest('hex');
           const previous=id===undefined ? undefined : seenInput.get(id);
           if (previous) {socket.end(previous===digest?'REUSED':'CONFLICT');return;}
+          // Keep deduplication deterministic without unbounded memory growth
+          // during long-lived REPL sessions. Refuse new IDs rather than evicting
+          // old ones and accidentally replaying an ambiguous previous command.
+          if(id!==undefined && seenInput.size>=4096){socket.end('INPUT_ID_LIMIT');return;}
           if (id!==undefined) seenInput.set(id,digest);
           try {child.stdin.write(item.chars,error=>{
             if(error && id!==undefined) seenInput.delete(id);

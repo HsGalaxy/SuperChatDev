@@ -1,0 +1,21 @@
+{
+  "version": "0.3.5",
+  "hashes": {
+    "dev_get_guide": "d05018f4e5c847409375008d83ac617b866381fa6368bd859e48f786103d7a5d",
+    "file_import": "85bf864240fa1392275f8fe448fd640fcdcd0777a3f4ce3feb8d3833f3c27bb1",
+    "file_unpack": "0cedf16ed80bffe516b4fdd90f6b7bf0382d858a35a0b565fd31f0b36329332d",
+    "file_export": "e3d3b0e25746fe0a49ae46fcb2874dc275d8793085e47a623f5ead44b6e22ad0",
+    "fs_list": "e992fd165cc7a9581caa395e51ff0f697f59c1d163ff513d0b1873efcefd566a",
+    "fs_read": "926c4bfebd5d1b6ca5dffa2493747bcec22d4d9530eab84adda5c6691d6bc076",
+    "fs_search": "57c8a72dbb98ee755ec8ec68eda4d85e8002c4890df3d2e08ff962c7c9bbd53b",
+    "job_start": "836f8b213deee52f3788800a79b90cfd62423b27d6ad2ae814a3ca149530cdab",
+    "job_read": "a26faa23c364679510702b7b1d552ad7bed7ef5528ce7d1ec83885c34580520b",
+    "job_list": "0a770e41949da5eafe16795beeb2ae545a994f907063857887c0c09447230942",
+    "job_cancel": "f9297231645ca4eafa2a8550fdbcbd184b56eac1d2a267b5e85b31821238c49b",
+    "workspace_execute": "939b9dc2b9a3969bcd443aca3eae7b01b107a30611475d5886e3da4a03a9b78b",
+    "workspace_read": "bdd9b589451f8bc949ef69c5ed6e58d230594d583421fe5e80b69e290898579b",
+    "workspace_list": "ae49a6b9d32cf5d6657d59d5c93a04e95ea62987df319a54ad78926c57cf2dcf",
+    "workspace_cancel": "aa20fd6eea9f5a60b7dd29566cc4c84002b23861c6864f1cc83244389e18c0d2",
+    "workspace_review": "410e3feebb2f7432fafa22b070e4990c68b74829f1d27ff7cb98909898fb1794"
+  }
+}

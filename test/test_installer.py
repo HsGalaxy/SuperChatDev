@@ -10,7 +10,7 @@ m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 
 class InstallTests(unittest.TestCase):
  def test_release(self):
-  self.assertEqual(m.verify_release(),35)
+  self.assertEqual(m.verify_release(),36)
  def test_hostname_validation(self):
   self.assertEqual(m.validate_domain('MCP.Test.Example.ORG'),'mcp.test.example.org')
   for bad in ['example.com','http://example.org','localhost','127.0.0.1','a..b','evil.com/path','-bad.com']:

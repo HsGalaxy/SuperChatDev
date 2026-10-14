@@ -7,6 +7,7 @@
 <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>
 <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3m6 0h4"/></symbol>
 <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V4m0 16h16M8 16l4-5 3 2 5-7"/></symbol>
 <symbol id="i-git" viewBox="0 0 24 24"><circle cx="6" cy="3" r="2"/><circle cx="6" cy="21" r="2"/><circle cx="18" cy="6" r="2"/><path d="M6 5v14m0-12c0 7 12 2 12-1"/></symbol>
 <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3m10-10h-3M5 12H2m17-7-2 2M7 17l-2 2M5 5l2 2m10 10 2 2"/></symbol>
 <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9A7 7 0 0 1 18 7l2 5M4 12l2 5a7 7 0 0 0 12.5-2"/></symbol>
@@ -38,6 +39,7 @@
 <button class="nav-link" data-nav="jobs"><svg class="icon"><use href="#i-terminal"></use></svg> 任务与批处理 <span class="nav-chevron">›</span></button>
 <button class="nav-link" data-nav="files"><svg class="icon"><use href="#i-folder"></use></svg> 文件管理 <span class="nav-chevron">›</span></button>
 <button class="nav-link" data-nav="git"><svg class="icon"><use href="#i-git"></use></svg> Git / GitHub <span class="nav-chevron">›</span></button>
+<button class="nav-link" data-nav="performance"><svg class="icon"><use href="#i-chart"></use></svg> 性能调试 <span class="nav-chevron">›</span></button>
 <div class="nav-heading heading-gap">服务器</div>
 <button class="nav-link" data-nav="settings"><svg class="icon"><use href="#i-settings"></use></svg> 系统设置 <span class="nav-chevron">›</span></button></nav>
 <div class="sidebar-foot"><div class="server-chip"><span class="live-dot"></span><span><strong>Gateway online</strong><small>连接安全 · 自托管</small></span></div>
@@ -99,6 +101,32 @@
 <div class="git-action-row"><button class="btn btn-primary btn-compact" type="submit">绑定 Git Push 地址</button><span class="field-note">只配置推送，不会自动 git push。</span></div></form>
 <div class="notice-box git-help"><strong>以后可以直接使用服务器 Git</strong><p>执行 git add、git commit、git push origin main；无需再让 GitHub MCP 逐个文件创建提交。私钥由命令执行用户持有，因此只让可信模型执行 Shell。</p></div>
 </section></div></section>
+<section class="page" id="page-performance">
+<div class="page-heading"><div><div class="eyebrow">OBSERVABILITY / MCP</div><h1>性能调试<span class="heading-period">.</span></h1><p>按需启用详细性能日志，分析请求延迟、调用阶段和交互瓶颈。默认关闭，不采集参数和正文。</p></div><span class="soft-pill" id="perf-enabled-status">DEBUG OFF</span></div>
+<div class="perf-layout">
+<section class="panel settings-panel"><div class="panel-head"><div><div class="eyebrow">DIAGNOSTIC MODE</div><h3>性能日志策略</h3><p class="setting-hint">日志含工具名称、状态、各阶段耗时、输入输出字节数及 Trace ID，不保存命令、用户数据、密钥、输出正文或请求地址。</p></div></div>
+<form id="perf-form" class="perf-fields">
+<label class="perf-toggle"><input type="checkbox" id="perf-enabled"> <strong>启用详细性能调试</strong><span>仅记录新的 MCP 请求，不影响现有会话</span></label>
+<div class="git-two-col">
+<label class="git-field">单个日志文件上限（MiB）<input id="perf-max-file" type="number" min="1" max="32" step="1" required value="8"></label>
+<label class="git-field">慢请求阈值（ms）<input id="perf-slow" type="number" min="0" max="60000" step="1" required value="250"></label></div>
+<div class="field-note">最多保留当前及上一份轮转日志，两份合计不超过所选上限的两倍。HTTP 200 的 MCP 工具失败仍会单独标记。</div>
+<div class="git-action-row"><button class="btn btn-primary btn-compact" type="submit">保存调试策略</button><button id="perf-refresh" type="button" class="btn btn-outline btn-compact">刷新分析</button><a class="btn btn-outline btn-compact" href="/admin/api/performance/download" download="mcp-performance.jsonl">下载 JSONL 日志</a></div>
+</form></section>
+<section class="panel settings-panel"><div class="panel-head"><div><div class="eyebrow">LATENCY DISTRIBUTION</div><h3>请求延迟分位数</h3><p class="setting-hint">基于最近最多 500 条有记录的请求，非全局精确指标。</p></div></div>
+<div class="perf-stats">
+<div><small>样本数</small><strong id="perf-samples">—</strong></div>
+<div><small>P50</small><strong id="perf-p50">—</strong></div>
+<div><small>P95</small><strong id="perf-p95">—</strong></div>
+<div><small>P99</small><strong id="perf-p99">—</strong></div></div>
+<p class="field-note" id="perf-loss">日志丢弃：—</p>
+<label class="git-field perf-clear-label">清除性能日志（需要管理员密码）<input id="perf-clear-password" type="password" autocomplete="off" placeholder="重新输入管理员密码"></label>
+<div class="git-action-row"><button class="btn btn-outline btn-compact danger-button" id="perf-clear" type="button">清除调试日志</button></div>
+</section>
+<section class="panel table-panel perf-table"><div class="panel-head"><div><div class="eyebrow">REQUEST EXPLORER</div><h3>最近 MCP 请求</h3></div><span class="panel-subtitle">点击 Trace ID 查看内部阶段</span></div>
+<div class="table-scroll"><table><thead><tr><th>时间</th><th>方法 / 工具</th><th>状态</th><th>总耗时</th><th>处理耗时</th><th>输入 / 输出</th><th>Trace</th></tr></thead><tbody id="perf-rows"><tr><td colspan="7" class="empty-row">正在读取…</td></tr></tbody></table></div>
+<div class="perf-inspect"><div class="eyebrow">TRACE TIMELINE</div><pre id="perf-trace-detail">选择记录中的 Trace ID 查看阶段耗时。</pre></div></section>
+</div></section>
 <section class="page" id="page-settings"><div class="page-heading"><div><div class="eyebrow">CONTROL PLANE / CONFIGURATION</div><h1>服务设置<span class="heading-period">.</span></h1><p>调整 MCP 权限、OAuth 认证、接入密钥与资源上限。</p></div><span class="soft-pill"><svg class="icon"><use href="#i-shield"></use></svg> SECURED</span></div>
 <form id="settings-form"><div class="settings-grid"><div class="settings-main">
 <section class="panel settings-panel">

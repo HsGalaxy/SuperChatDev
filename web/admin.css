@@ -91,3 +91,21 @@ h1,h2,h3,p{margin:0}h1{letter-spacing:-1.4px}small{font-size:12px}a{color:inheri
 .git-help{margin-top:20px}
 @media(max-width:900px){.git-grid{grid-template-columns:1fr}.git-panel:last-child{grid-column:auto}}
 @media(max-width:560px){.git-two-col{grid-template-columns:1fr}.git-action-row .btn{font-size:11px}}
+
+/* On-demand performance diagnostics */
+.perf-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;align-items:start}
+.perf-layout .settings-panel{min-width:0}
+.perf-table{grid-column:1/-1}
+.perf-fields{display:flex;flex-direction:column;gap:17px}
+.perf-toggle{display:flex;align-items:center;flex-wrap:wrap;gap:9px;color:#4c5b75;font-size:12px}
+.perf-toggle input{accent-color:#665efa;width:17px;height:17px}
+.perf-toggle span{flex-basis:100%;font-size:11px;color:#96a0b4;padding-left:25px}
+.perf-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.perf-stats>div{border:1px solid #eef0f7;background:#f8f9fd;border-radius:10px;padding:14px 9px}
+.perf-stats small{font-size:10px;color:#8b9ab0}
+.perf-stats strong{display:block;font-size:20px;margin-top:9px;color:#303c60}
+.perf-clear-label{margin-top:20px}
+.perf-inspect{padding:20px 24px;border-top:1px solid #eef0f6}
+.perf-inspect pre{font:11px/1.8 ui-monospace,Consolas,monospace;overflow:auto;max-height:310px;background:#0e1729;color:#d6def2;padding:16px;border-radius:10px;white-space:pre-wrap;word-break:break-all;margin:11px 0 0}
+@media(max-width:950px){.perf-layout{grid-template-columns:1fr}.perf-table{grid-column:auto}}
+@media(max-width:500px){.perf-stats{grid-template-columns:repeat(2,1fr)}}

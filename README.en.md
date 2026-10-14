@@ -118,8 +118,15 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 
 **Limitations:** Single trusted owner only, not a multi-tenant sandbox. MCP cannot disable ChatGPT's own approval dialogs or force OAuth refresh support in every client. Jobs may survive HTTP gateway restarts, but a host reboot does not automatically resume running commands.
 
-**License:** [MIT](LICENSE) · **Current runtime:** v0.3.4
+**License:** [MIT](LICENSE) · **Current runtime:** v0.3.5
 
 ### Git / GitHub from Admin (v0.3.4)
 
 Open `/admin/` → **Git / GitHub** to configure the real command runner's Git commit identity, provision per-repository GitHub SSH Deploy Keys (generate, import, or adopt an existing server key), copy public keys, test repository read access, and bind workspace Git push remotes. The Admin never returns private-key bytes; importing, adopting and deleting keys require a fresh Admin password confirmation. Add the public key to GitHub's repository Settings → Deploy keys and enable **Allow write access**. A successful read test does not prove write permission.
+
+
+### v0.3.5: opt-in performance diagnostics and interactive PTY improvements
+
+The new Admin **Performance Diagnostics** page records MCP request timing only when explicitly enabled. Explore P50/P95/P99, read/parse/dispatch phases, tool milestones, request/response byte counts and bounded JSONL exports. Commands, arguments, terminal output, OAuth tokens, headers, URLs, addresses, and error messages are never logged. Two rotated files are kept with a configurable 1–32 MiB per-file cap.
+
+In Interactive/Legacy profiles, `job_input(wait_for_prompt=true)` can wait for common shell/Python/IPython prompts without resending input; `job_read(tail_lines=N)` returns the most recent log lines independently of the durable byte cursor. Prompt detection is heuristic. These optional arguments modify the ChatGPT tool schema; refresh/review/publish app actions after updating production.

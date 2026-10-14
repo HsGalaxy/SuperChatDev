@@ -62,13 +62,14 @@ byId('logout').addEventListener('click', async () => {
   showLogin();
 });
 function navigate(page) {
-  if (!['overview','activity','jobs','files','git','settings'].includes(page)) return;
+  if (!['overview','activity','jobs','files','git','performance','settings'].includes(page)) return;
   if (currentPage === 'settings' && page !== 'settings') clearIssuedBearer();
   if (currentPage === 'git' && page !== 'git') clearGitSecrets();
+  if (currentPage === 'performance' && page !== 'performance') byId('perf-clear-password').value='';
   currentPage = page;
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + page));
   document.querySelectorAll('[data-nav]').forEach(el => el.classList.toggle('active', el.dataset.nav === page));
-  byId('top-crumb').textContent = ({overview:'总览',activity:'MCP 调用记录',jobs:'任务与批处理',files:'文件管理',git:'Git / GitHub',settings:'系统设置'})[page];
+  byId('top-crumb').textContent = ({overview:'总览',activity:'MCP 调用记录',jobs:'任务与批处理',files:'文件管理',git:'Git / GitHub',performance:'性能调试',settings:'系统设置'})[page];
   document.querySelector('.sidebar').classList.remove('open');
   window.scrollTo({top:0,behavior:'instant'});
   refreshPage();
@@ -82,7 +83,7 @@ byId('refresh').addEventListener('click', refreshPage);
 function refreshPage() {
   if (byId('shell').hidden) return;
   if (loading) { pendingRefresh = true; return; }
-  const loaders = { overview: loadOverview, activity: loadActivity, jobs: loadJobs, files: loadFiles, git: loadGit, settings: loadSettings };
+  const loaders = { overview: loadOverview, activity: loadActivity, jobs: loadJobs, files: loadFiles, git: loadGit, performance: loadPerformance, settings: loadSettings };
   loading = true;
   Promise.resolve(loaders[currentPage]()).catch(e => toast(e.message, true)).finally(() => {
     loading = false;
@@ -394,7 +395,7 @@ byId('settings-form').addEventListener('submit',async event=>{
   const blockedTools=[...document.querySelectorAll('[data-tool]')].filter(x=>!x.checked).map(x=>x.dataset.tool);
   const btn=byId('settings-save');btn.disabled=true;
   try{
-    const data=await api('settings',{method:'PUT',data:{permissions,limits,downloadOrigins,blockedTools,oauth,security,toolProfile:byId('tool-profile').value}});
+    const data=await api('settings',{method:'PUT',data:{permissions,limits,downloadOrigins,blockedTools,oauth,security,performance:settingsSaved?.performance,toolProfile:byId('tool-profile').value}});
     settingsSaved=data.settings;renderSettings(settingsSaved);renderToolManifest(await api('tools'));toast('设置已保存，并对新的 MCP 请求生效');
   }catch(e){toast(e.message,true);}
   finally{btn.disabled=false;}
@@ -632,6 +633,88 @@ byId('git-bind-form').addEventListener('submit',async event=>{
     const result=await api('git/bind',{method:'POST',data:{repository,cwd}});
     setText('git-connection-result','绑定成功：'+result.cwd+' → '+result.pushUrl+'。下一步可直接 git push origin main。');
     toast('项目的 Git Push 地址配置成功');
+  }catch(error){toast(error.message,true);}
+  finally{button.disabled=false;}
+});
+
+
+function metricMs(value){return typeof value==='number'&&Number.isFinite(value)?value.toFixed(1)+' ms':'—';}
+let performanceConfigured=false;
+async function loadPerformance() {
+  const snapshot=await api('performance?limit=200');
+  const p=snapshot.config||{};
+  if(!performanceConfigured){
+    byId('perf-enabled').checked=p.enabled===true;
+    byId('perf-max-file').value=p.maxFileMB??8;
+    byId('perf-slow').value=p.slowMs??250;
+    performanceConfigured=true;
+  }
+  setText('perf-enabled-status',p.enabled?'DEBUG ON':'DEBUG OFF');
+  setText('perf-samples',snapshot.sample_count??0);
+  setText('perf-p50',metricMs(snapshot.p50_ms));
+  setText('perf-p95',metricMs(snapshot.p95_ms));
+  setText('perf-p99',metricMs(snapshot.p99_ms));
+  setText('perf-loss','缓冲丢弃：'+(snapshot.dropped||0)+
+    (snapshot.write_error?' · 写入错误：'+snapshot.write_error:'')+
+    ' · 最多读取最近 '+(snapshot.sample_count||0)+' 条记录');
+  const body=byId('perf-rows');
+  body.innerHTML=(snapshot.entries||[]).length ? snapshot.entries.map(item=>
+    '<tr><td>'+esc(dateTime(item.at))+'</td><td>'+esc(item.tool||item.method)+'</td><td>'+
+    esc((item.tool_error || item.rpc_error) ? '工具失败' : item.status||'—')+'</td><td>'+
+    esc(metricMs(item.duration_ms))+(item.slow?' ⚠':'')+'</td><td>'+
+    esc(metricMs(item.dispatch_ms))+'</td><td>'+esc(formatBytes(item.request_bytes))+
+    ' / '+esc(formatBytes(item.response_bytes))+'</td><td>'+
+    (item.trace_id ? '<button type="button" class="small-action" data-perf-trace="'+esc(item.trace_id)+'">'+shortId(item.trace_id)+'</button>' : '—')+
+    '</td></tr>').join(''):'<tr><td colspan="7" class="empty-row">暂无性能记录。可先启用 DEBUG 模式再进行 MCP 调用。</td></tr>';
+}
+byId('perf-form').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const button=event.submitter||byId('perf-form').querySelector('button');
+  button.disabled=true;
+  try{
+    const data=await api('performance',{method:'PUT',data:{
+      enabled:byId('perf-enabled').checked,
+      maxFileMB:Number(byId('perf-max-file').value),
+      slowMs:Number(byId('perf-slow').value)
+    }});
+    performanceConfigured=false;
+    if(settingsSaved)settingsSaved.performance=data.settings;
+    toast(data.settings.enabled?'性能调试已开启（仅采集元数据）':'性能调试已关闭');
+    await loadPerformance();
+  }catch(error){toast(error.message,true);}
+  finally{button.disabled=false;}
+});
+byId('perf-refresh').addEventListener('click',()=>loadPerformance().catch(e=>toast(e.message,true)));
+byId('perf-clear').addEventListener('click',async()=>{
+  const password=byId('perf-clear-password').value;
+  if(!password){toast('清除日志需填写管理员密码',true);return;}
+  if(!confirm('永久清除当前及上一份性能日志？此操作无法撤销。'))return;
+  const button=byId('perf-clear');button.disabled=true;
+  try{
+    await api('performance/clear',{method:'POST',data:{password}});
+    toast('已清除性能日志');
+    await loadPerformance();
+  }catch(error){toast(error.message,true);}
+  finally{byId('perf-clear-password').value='';button.disabled=false;}
+});
+byId('perf-rows').addEventListener('click',async event=>{
+  const button=event.target.closest('[data-perf-trace]');
+  if(!button)return;
+  const id=button.dataset.perfTrace;
+  button.disabled=true;
+  try{
+    const result=await api('performance/trace?trace_id='+encodeURIComponent(id));
+    const trace=result.calls?.[0];
+    if(!trace){setText('perf-trace-detail','记录已过期或不存在');return;}
+    const points=trace.debug?.points||[];
+    const timeline=points.map(point=>{
+      const extra=Object.entries(point).filter(([k])=>k!=='stage'&&k!=='at_ms')
+        .map(([k,v])=>k+'='+v).join(' ');
+      return String(point.at_ms).padStart(9)+' ms  '+point.stage+(extra?'   '+extra:'');
+    });
+    setText('perf-trace-detail','Trace '+id+'\\n工具：'+trace.tool+
+      '\\n结果：'+trace.status+'\\n完整耗时：'+metricMs(trace.duration_ms)+'\\n\\n'+
+      (timeline.join('\\n')||'本次请求没有详细阶段记录（可能发生在 DEBUG 开启之前）'));
   }catch(error){toast(error.message,true);}
   finally{button.disabled=false;}
 });

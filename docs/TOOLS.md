@@ -49,3 +49,9 @@ Admission uses a durable active-job index rather than scanning all historical ta
 The Admin **Git / GitHub** page configures the command runner's global Git name/email, manages repository-scoped ED25519 SSH Deploy Keys (generate/import/adopt), provides GitHub HTTPS-verified SSH host keys (automatically provisioned on binding) and repository-read diagnostics, and updates only `origin` push URLs for projects inside the workspace. Import/adoption/deletion require Admin password confirmation. Private keys never appear in Admin responses or audit logs.
 
 Repository access is not equivalent to write permission: install the public key in the corresponding GitHub repository and enable **Allow write access**. No GitHub PATs are persisted, no new Core MCP tool is exposed, and the v0.3.3 published tool schema remains valid.
+
+## v0.3.5: performance tracing and interactive mode
+
+The Admin **Performance Diagnostics** panel enables an opt-in metadata-only performance log (off by default), including P50/P95/P99, HTTP body/parse/dispatch timings, tool-stage milestones, safe request/response sizes, bounded JSONL export and password-confirmed deletion. No arguments, commands, outputs, tokens, headers, URLs, addresses or exception messages enter those logs.
+
+`job_read(tail_lines=1..200)` includes an independent recent-lines view (`output_tail`) while preserving the byte cursor. `job_input(wait_for_prompt=true)` waits until a heuristic REPL prompt, completion or the requested `wait_ms` deadline. Heuristics may be wrong; always verify actual job status. Prompt input deduplication is retained. Optional MCP input fields changed, so refresh/review/publish ChatGPT actions after production upgrade.
