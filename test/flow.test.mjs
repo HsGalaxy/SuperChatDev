@@ -221,7 +221,11 @@ test('deployment helper checks conflicts before replacement and restores origina
   const hash=x=>createHash('sha256').update(x).digest('hex');
   await writeFile(path.join(source,'src/server.mjs'),'new');await writeFile(path.join(target,'src/server.mjs'),'old',{mode:0o640});
   await writeFile(path.join(source,'RELEASE.json'),JSON.stringify({files:{'src/server.mjs':hash('new')}}));
-  await writeFile(path.join(source,'BASELINE.json'),JSON.stringify({hashes:{'src/server.mjs':hash('old')}}));
+  // A pre-manifest upgrade must match a certified historic release snapshot;
+  // arbitrary developer-supplied BASELINE.json is deliberately unsupported.
+  await mkdir(path.join(source,'legacy-baselines'));
+  await writeFile(path.join(source,'legacy-baselines/v0.3.0.json'),
+    JSON.stringify({version:'0.3.0',files:{'src/server.mjs':hash('old')}}));
   async function command(args){return await new Promise((resolve,reject)=>{const p=spawn('python3',[script,...args],{stdio:'ignore'});p.once('error',reject);p.once('exit',resolve);});}
   assert.equal(await command(['apply',source,target,backup]),0);assert.equal(await readFile(path.join(target,'src/server.mjs'),'utf8'),'new');
   assert.equal(await command(['rollback',target,backup]),0);assert.equal(await readFile(path.join(target,'src/server.mjs'),'utf8'),'old');assert.equal((await stat(path.join(target,'src/server.mjs'))).mode & 0o777,0o640);

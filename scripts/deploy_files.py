@@ -2,7 +2,7 @@
 """Checksum-verified release deployment with distinct fresh/upgrade modes.
 
 Both operations use the same rollback journal. A fresh install needs NO
-BASELINE.json; upgrades verify a locally installed manifest before changing
+BASELINE.json; upgrades verify installed manifests or certified legacy hashes before changing
 files. It never fabricates a baseline from files it is about to overwrite.
 """
 import hashlib
@@ -64,7 +64,7 @@ def file_metadata(path):
             'uid': info.st_uid, 'gid': info.st_gid}
 
 
-def installed_baseline(source, target):
+def installed_baseline(source, target, release_files):
     path = target / INSTALLED_MANIFEST
     reject_links(target, INSTALLED_MANIFEST)
     if path.exists():
@@ -72,15 +72,38 @@ def installed_baseline(source, target):
         if not isinstance(manifest.get('files'), dict):
             raise ValueError('Installed release manifest is invalid')
         return manifest['files']
-    # Legacy release tooling generated an out-of-band baseline for direct,
-    # explicitly verified upgrades. Retained for old internal tests only.
-    legacy = source / 'BASELINE.json'
+
+    # Public pre-manifest v0.3.0 installations had no installed manifest.
+    # Migrate ONLY the exact historic release, not an unknown/custom build.
+    # Crucially, this is a trusted release snapshot; never manufacture a
+    # baseline from the machine we are about to overwrite.
+    legacy = source / 'legacy-baselines' / 'v0.3.0.json'
     if legacy.is_file() and not legacy.is_symlink():
-        return json.loads(legacy.read_text(encoding='utf-8'))['hashes']
+        snapshot = json.loads(legacy.read_text(encoding='utf-8'))
+        expected = snapshot.get('files')
+        if (snapshot.get('version') == '0.3.0'
+                and isinstance(expected, dict)
+                and set(expected) == set(release_files)):
+            problems = []
+            for name, checksum in expected.items():
+                validate_name(name)
+                reject_links(target, name)
+                current = target / name
+                if not isinstance(checksum, str) or len(checksum) != 64:
+                    raise ValueError('Invalid legacy checksum: ' + name)
+                if not current.is_file() or sha(current.read_bytes()) != checksum:
+                    problems.append(name)
+            if not problems:
+                return expected
+            raise ValueError(
+                'Known v0.3.0 installation differs from the certified baseline; '
+                'refusing migration. Changed or missing: ' +
+                ', '.join(problems[:10]))
     raise ValueError(
-        'Cannot safely upgrade: installed release manifest is missing. '
-        'Use fresh mode only on an empty runtime directory, or manually '
-        'migrate and verify an existing installation before upgrading.')
+        'Cannot safely upgrade: installed release manifest is missing and '
+        'installation does not match a certified legacy baseline. '
+        'Do not use fresh mode to overwrite existing runtime files; '
+        'reconcile the existing installation before upgrading.')
 
 
 def apply(source, target, backup, mode='upgrade'):
@@ -101,7 +124,7 @@ def apply(source, target, backup, mode='upgrade'):
             raise ValueError('Runtime is already installed; choose upgrade mode')
         baseline = {}
     else:
-        baseline = installed_baseline(source, target)
+        baseline = installed_baseline(source, target, files)
 
     originals = {}
     # Verify all input files, existing metadata and conflicts BEFORE writes.
@@ -154,8 +177,8 @@ def apply(source, target, backup, mode='upgrade'):
         for d in ('src', 'web'):
             if (target / d).exists():
                 os.chmod(target / d, 0o755)
-        # Persist verified digests for the NEXT upgrade. Public source does
-        # not and should not contain a host-specific BASELINE.json.
+        # Persist verified digests for the NEXT upgrade. Every upgrade saves a manifest;
+        # legacy installations first pass a certified historical hash check.
         atomic(manifest_path, json.dumps({
             'schema': 1, 'version': release.get('version', 'unknown'),
             'files': files,

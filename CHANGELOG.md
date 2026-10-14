@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 hotfix — Verified v0.3.0 migration
+
+- Supports safe upgrades from the pre-manifest v0.3.0 production release using the published 31-file certified SHA-256 baseline, **only if all installed files match exactly**.
+- Existing installations with custom/modified runtime files remain protected and fail before writes; no fabricated baseline.
+- Preserves systemd unit, reverse proxy, credentials, OAuth state and project workspaces; supports runtime rollback and future manifest-based upgrades.
+- Adds isolated migration/rollback tests and replay against a byte-for-byte copy of an existing 0.3.0 installation.
+
 ## 0.3.2 — ChatGPT Web editing/search reliability
 
 - Bounded unique-context Unified Diff relocation and small header-count tolerance.

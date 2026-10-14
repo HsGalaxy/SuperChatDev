@@ -25,6 +25,8 @@ jobs:
         run: |
           python3 -m unittest discover -s test -p 'test_installer*.py'
           python3 -m unittest discover -s test -p 'test_bootstrap.py'
+      - name: Legacy v0.3.0 migration and rollback regression
+        run: python3 -m unittest discover -s test -p 'test_legacy_upgrade.py'
       - name: Fresh install, upgrade and rollback integration (isolated paths)
         run: python3 -m unittest discover -s test -p 'test_release_fresh.py'
       - name: Check both languages, local and streamed bootstrap (offline)

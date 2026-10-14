@@ -73,6 +73,19 @@ curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.
 
 升级会重启 MCP 网关，期间 ChatGPT 连接可能短暂中断；尚未启用 Access Token 持久化的旧连接可能需要重新授权。备份默认保存在 `/var/backups/chatgpt-dev-mcp-installer`。请额外备份真正重要的工作区及私有状态。
 
+
+### 从无安装清单的 v0.3.0 升级
+
+部分早期 v0.3.0 部署没有 `.superchatdev-release.json`。安装器现在附有公开发布的 **v0.3.0 共 31 个程序文件的 SHA-256 认证基线**；只有旧版运行时文件全部匹配时才会执行就地升级。检测到任何自行修改、丢失或非官方版本的文件，则在写入前拒绝升级，不会假造清单或覆盖自定义代码。
+
+在目标 VPS 的 root SSH 终端执行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh | bash -s -- --mode upgrade --yes
+```
+
+升级会重启 `chatgpt-dev-mcp.service`，但不会重装系统用户、Caddy、工作区或重置凭据。它会备份旧运行时及部分私有状态，并在探活失败时回滚运行时代码。升级前仍建议自行完整备份。若 MCP 会话短暂断开，连接恢复后再次检查 `/health`。
+
 ## 7. 安装后
 
 ```bash

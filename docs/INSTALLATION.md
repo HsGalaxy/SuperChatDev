@@ -45,6 +45,19 @@ Run the same bootstrap command and choose **Upgrade**. Existing installations de
 
 The MCP gateway restarts during an upgrade, potentially interrupting ChatGPT sessions. Older credentials may require reauthorization until the connected client supports refresh tokens.
 
+
+### Certified migration of pre-manifest v0.3.0 installations
+
+Historical v0.3.0 deployments may lack `.superchatdev-release.json`. The public installer now includes a **certified 31-file SHA-256 snapshot** of the original v0.3.0 runtime. Migration only proceeds if **every** installed runtime file exactly matches this baseline; customized, missing or unknown versions are rejected without modifying files.
+
+From a **root SSH shell** on the target host:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh | bash -s -- --mode upgrade --yes
+```
+
+The installer preserves the unit, reverse proxy, workspaces, credentials and OAuth state, backs up the current runtime, restarts the gateway and rolls back runtime files if the health check fails. Back up important data independently, and re-check `/health` after any temporary MCP disconnection.
+
 ## Command-line options
 
 ```bash
