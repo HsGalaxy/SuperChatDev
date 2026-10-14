@@ -26,6 +26,15 @@ class InstallTests(unittest.TestCase):
   self.assertIn(chr(92)+chr(34),text)
   for bad in ['oops'+chr(10)+'NEW_KEY=1','zero'+chr(0)]:
    with self.assertRaises(m.InstallError):m.quote_env(bad)
+ def test_nodesource_keyring_is_readable_under_restrictive_umask(self):
+  # Root bootstrap inherits umask 077. APT's unprivileged signature
+  # verifier must be able to read this *public* keyring.
+  import inspect
+  source=inspect.getsource(m.ensure_node)
+  self.assertIn('os.chmod(keyring, 0o644)',source)
+  self.assertIn('signed-by=/usr/share/keyrings/nodesource.gpg',source)
+  self.assertNotIn('--allow-unauthenticated',source)
+
  def test_unit_hardening(self):
   u=m.unit_text('/usr/bin/node')
   for keyword in ['User=chatgpt-mcp','NoNewPrivileges=true','ProtectSystem=strict',
