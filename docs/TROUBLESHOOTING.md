@@ -22,3 +22,10 @@ For streamed Bash installation, use an SSH session with a controlling terminal, 
 Choose **2. English** at the first screen or append `--lang en` using `| sudo bash -s -- --lang en`. Chinese is the default.
 
 If download fails, confirm TLS/DNS access to `raw.githubusercontent.com` and `codeload.github.com`. Do not disable TLS verification to work around the issue. The bootstrap refuses archives with unsafe paths, symlinks or special files.
+
+
+## Fresh install fails with `BASELINE.json` missing
+
+Earlier installers incorrectly used an upgrade-only deployment helper for all installations. The fixed installer uses distinct **fresh** and **upgrade** modes: fresh deployment works without `BASELINE.json`, refuses to overwrite existing runtime code, and records `.superchatdev-release.json` for future safe upgrades. Do not create a dummy baseline or disable checksum verification. On interrupted new installs, generated credentials, service unit and environment file are cleaned up and runtime files rolled back; private state/workspace data is retained.
+
+A missing installed release manifest during an **upgrade** is a separate safety condition: manually verify/migrate an unmanaged installation instead of silently trusting or overwriting it.

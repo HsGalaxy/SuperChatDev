@@ -30,3 +30,10 @@ Core 默认只暴露 16 个工具。核查后台工具清单；在 ChatGPT 刷�
 **Q：安装 Node.js 时提示 `NO_PUBKEY`？**
 
 早期安装脚本在 `umask 077` 下生成的公开 GPG 密钥环可能只有 root 可读，APT 沙箱用户无法读取。先检查 `stat -c '%a %n' /usr/share/keyrings/nodesource.gpg`；若是 `600`，执行 `sudo chmod 644 /usr/share/keyrings/nodesource.gpg && sudo apt-get update`，再重新运行一键安装。新版安装器已修复公开密钥环权限。不要关闭 APT 签名验证。
+
+
+**Q：首次安装时提示缺少 `BASELINE.json`，怎么办？**
+
+这是旧版部署器的程序错误：首次安装被错误地要求提供特定生产环境的升级基线。请更新至最新 `main` 后重试一键安装。**不要**自己创建空的 `BASELINE.json`，也不要关闭文件校验。修复版新装会检查目标运行时目录是否为空；升级则使用首次安装保存的 `.superchatdev-release.json` 哈希清单验证已安装文件。首次安装如被中断，自动删除这次创建的服务文件、环境文件和新生成的凭据，并回滚运行时文件；已有的项目/私有状态不会被盲目删除。
+
+如果升级时报 `installed release manifest is missing`，说明机器上的运行时没有可核对的安装清单。为避免覆盖已有自定义程序，请先核对旧安装来源，不要用新装模式强行覆盖。

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — 2026-10-14 installer hotfix
+
+- Fixed fresh installs on new servers incorrectly requiring private `BASELINE.json`.
+- Separated fresh and upgrade deployment modes. Fresh installs refuse existing code, and upgrades verify persisted local checksums.
+- Added a persisted installed-release manifest, safer rollback of both files and manifest, and cleanup of credentials/unit/environment after failed new installation.
+- Added isolated full fresh-install, upgrade, conflict and rollback regression tests; no changes to ChatGPT Core tools.
+
 ## Unreleased — One-line installer and bilingual documentation
 
 - Added streaming GitHub bootstrap: `curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh | sudo bash`. Local checkouts still run without downloading source.

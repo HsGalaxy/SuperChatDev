@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Verify, install and roll back an explicit release file set. Does not manage services."""
+"""Checksum-verified release deployment with distinct fresh/upgrade modes.
+
+Both operations use the same rollback journal. A fresh install needs NO
+BASELINE.json; upgrades verify a locally installed manifest before changing
+files. It never fabricates a baseline from files it is about to overwrite.
+"""
 import hashlib
 import json
 import os
@@ -7,14 +12,19 @@ from pathlib import Path
 import sys
 import tempfile
 
+INSTALLED_MANIFEST = '.superchatdev-release.json'
+
 
 def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
 def validate_name(name):
+    if not isinstance(name, str):
+        raise ValueError('Invalid manifest path')
     parts = Path(name).parts
-    if not parts or Path(name).is_absolute() or any(p in ('..', '.') for p in parts):
+    if (not parts or Path(name).is_absolute() or
+            any(p in ('..', '.') for p in parts)):
         raise ValueError('Unsafe manifest path')
     if parts[0] not in ('src', 'web') and name not in ('package.json', 'README.md'):
         raise ValueError('Manifest includes a non-runtime path: ' + name)
@@ -44,72 +54,157 @@ def atomic(path, content, mode):
         Path(tmp).unlink(missing_ok=True)
 
 
-def apply(source, target, backup):
-    release = json.loads((source / 'RELEASE.json').read_text())
-    baseline = json.loads((source / 'BASELINE.json').read_text())['hashes']
+def file_metadata(path):
+    if not path.exists():
+        return {'existed': False}
+    if not path.is_file():
+        raise ValueError('Expected a regular file: ' + str(path))
+    info = path.stat()
+    return {'existed': True, 'mode': info.st_mode & 0o777,
+            'uid': info.st_uid, 'gid': info.st_gid}
+
+
+def installed_baseline(source, target):
+    path = target / INSTALLED_MANIFEST
+    reject_links(target, INSTALLED_MANIFEST)
+    if path.exists():
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(manifest.get('files'), dict):
+            raise ValueError('Installed release manifest is invalid')
+        return manifest['files']
+    # Legacy release tooling generated an out-of-band baseline for direct,
+    # explicitly verified upgrades. Retained for old internal tests only.
+    legacy = source / 'BASELINE.json'
+    if legacy.is_file() and not legacy.is_symlink():
+        return json.loads(legacy.read_text(encoding='utf-8'))['hashes']
+    raise ValueError(
+        'Cannot safely upgrade: installed release manifest is missing. '
+        'Use fresh mode only on an empty runtime directory, or manually '
+        'migrate and verify an existing installation before upgrading.')
+
+
+def apply(source, target, backup, mode='upgrade'):
+    if mode not in ('fresh', 'upgrade'):
+        raise ValueError('Mode must be fresh or upgrade')
+    if not target.is_dir() or target.is_symlink():
+        raise ValueError('Deployment target must be an existing real directory')
+    release = json.loads((source / 'RELEASE.json').read_text(encoding='utf-8'))
+    files = release.get('files')
+    if not isinstance(files, dict) or not files:
+        raise ValueError('Release manifest is empty or invalid')
+
+    manifest_path = target / INSTALLED_MANIFEST
+    reject_links(target, INSTALLED_MANIFEST)
+    manifest_original = file_metadata(manifest_path)
+    if mode == 'fresh':
+        if manifest_original['existed']:
+            raise ValueError('Runtime is already installed; choose upgrade mode')
+        baseline = {}
+    else:
+        baseline = installed_baseline(source, target)
+
     originals = {}
-    # Check every input and live conflict BEFORE replacing any runtime file.
-    for name, digest in release['files'].items():
+    # Verify all input files, existing metadata and conflicts BEFORE writes.
+    for name, digest in files.items():
         validate_name(name)
+        if not isinstance(digest, str) or len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest):
+            raise ValueError('Invalid file digest: ' + name)
         reject_links(source, name)
         reject_links(target, name)
         data = (source / name).read_bytes()
         if sha(data) != digest:
             raise ValueError('Release checksum mismatch: ' + name)
         live = target / name
-        if live.exists():
-            if not live.is_file():
-                raise ValueError('Destination is not a file: ' + name)
+        original = file_metadata(live)
+        if mode == 'fresh':
+            if original['existed']:
+                raise ValueError('Fresh installation refused to overwrite existing runtime file: ' + name)
+        elif original['existed']:
             current = sha(live.read_bytes())
-            if name != 'README.md' and current not in (baseline.get(name), digest):
-                raise ValueError('Production file changed since baseline; reconcile before deploying: ' + name)
-            info = live.stat()
-            originals[name] = {'existed': True, 'mode': info.st_mode & 0o777, 'uid': info.st_uid, 'gid': info.st_gid}
-        else:
-            originals[name] = {'existed': False}
+            if current not in (baseline.get(name), digest):
+                raise ValueError('Production file changed since installation; reconcile before deploying: ' + name)
+        elif name in baseline:
+            raise ValueError('An installed runtime file is missing; inspect before upgrading: ' + name)
+        originals[name] = original
+
     backup.mkdir(parents=True, mode=0o700, exist_ok=False)
     directory_modes = {}
-    for d in ('src', 'web'):
-        if (target / d).exists():
-            directory_modes[d] = (target / d).stat().st_mode & 0o777
-    for name, item in originals.items():
-        if item['existed']:
+    for name in ('src', 'web'):
+        d = target / name
+        if d.exists() and not d.is_dir():
+            raise ValueError('Runtime directory is not a directory: ' + name)
+        directory_modes[name] = {
+            'existed': d.exists(),
+            'mode': d.stat().st_mode & 0o777 if d.exists() else None,
+        }
+    for name, original in originals.items():
+        if original['existed']:
             atomic(backup / name, (target / name).read_bytes(), 0o600)
-    atomic(backup / 'rollback.json', json.dumps({'files': originals, 'directories': directory_modes}).encode(), 0o600)
+    if manifest_original['existed']:
+        atomic(backup / INSTALLED_MANIFEST, manifest_path.read_bytes(), 0o600)
+    atomic(backup / 'rollback.json', json.dumps({
+        'files': originals, 'directories': directory_modes,
+        'installed_manifest': manifest_original,
+        'mode': mode,
+    }).encode(), 0o600)
+
     try:
-        for name in originals:
-            # Sources are public code/assets; credentials remain outside the release.
+        for name in files:
             atomic(target / name, (source / name).read_bytes(), 0o644)
         for d in ('src', 'web'):
-            os.chmod(target / d, 0o755)
+            if (target / d).exists():
+                os.chmod(target / d, 0o755)
+        # Persist verified digests for the NEXT upgrade. Public source does
+        # not and should not contain a host-specific BASELINE.json.
+        atomic(manifest_path, json.dumps({
+            'schema': 1, 'version': release.get('version', 'unknown'),
+            'files': files,
+        }, indent=2).encode() + b'\n', 0o644)
     except BaseException:
         rollback(target, backup)
         raise
 
 
+def restore_file(target, backup, name, original):
+    reject_links(target, name)
+    if original['existed']:
+        atomic(target / name, (backup / name).read_bytes(), original['mode'])
+        if os.geteuid() == 0:
+            os.chown(target / name, original['uid'], original['gid'])
+    else:
+        (target / name).unlink(missing_ok=True)
+
+
 def rollback(target, backup):
-    journal = json.loads((backup / 'rollback.json').read_text())
-    for name, item in journal['files'].items():
+    journal = json.loads((backup / 'rollback.json').read_text(encoding='utf-8'))
+    for name, original in journal['files'].items():
         validate_name(name)
-        reject_links(target, name)
-        if item['existed']:
-            atomic(target / name, (backup / name).read_bytes(), item['mode'])
-            if os.geteuid() == 0:
-                os.chown(target / name, item['uid'], item['gid'])
-        else:
-            (target / name).unlink(missing_ok=True)
-    for name, mode in journal['directories'].items():
-        os.chmod(target / name, mode)
+        restore_file(target, backup, name, original)
+    manifest_original = journal.get('installed_manifest', {'existed': False})
+    restore_file(target, backup, INSTALLED_MANIFEST, manifest_original)
+    for name, setting in journal['directories'].items():
+        d = target / name
+        if isinstance(setting, dict):
+            if setting.get('existed') and d.exists():
+                os.chmod(d, setting['mode'])
+            elif not setting.get('existed') and d.exists():
+                try:
+                    d.rmdir()
+                except OSError:
+                    pass  # Don't remove unexpected data.
+        elif d.exists():
+            os.chmod(d, setting)
 
 
 if __name__ == '__main__':
     try:
-        if sys.argv[1] == 'apply':
-            apply(*(Path(x).resolve() for x in sys.argv[2:5]))
-        elif sys.argv[1] == 'rollback':
+        if len(sys.argv) >= 5 and sys.argv[1] == 'apply' and len(sys.argv) <= 6:
+            apply(*(Path(x).resolve() for x in sys.argv[2:5]),
+                  mode=sys.argv[5] if len(sys.argv) == 6 else 'upgrade')
+        elif len(sys.argv) == 4 and sys.argv[1] == 'rollback':
             rollback(*(Path(x).resolve() for x in sys.argv[2:4]))
         else:
-            raise ValueError('Expected apply or rollback')
-    except Exception as e:
-        print(str(e), file=sys.stderr)
+            raise ValueError('Expected: apply SOURCE TARGET BACKUP [fresh|upgrade], or rollback TARGET BACKUP')
+    except Exception as error:
+        print(str(error), file=sys.stderr)
         sys.exit(1)

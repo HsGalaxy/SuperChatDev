@@ -472,9 +472,11 @@ def make_backup():
     base.mkdir(mode=0o700)
     return base
 
-def install_release(backup):
+def install_release(backup, mode: str):
+    if mode not in ("fresh", "upgrade"):
+        raise InstallError("Invalid release deployment mode")
     run(sys.executable,str(SOURCE/"scripts/deploy_files.py"),"apply",
-        str(SOURCE),str(APP),str(backup/"runtime"))
+        str(SOURCE),str(APP),str(backup/"runtime"),mode)
 
 def rollback_release(backup):
     record=backup/"runtime/rollback.json"
@@ -502,7 +504,7 @@ def upgrade():
     step("Upgrade runtime only; preserve users, proxy, credentials and workspace")
     installed=False
     try:
-        install_release(backup); installed=True
+        install_release(backup, 'upgrade'); installed=True
         run("systemctl","restart",SERVICE)
         check_backend(port)
     except Exception:
@@ -518,6 +520,13 @@ def upgrade():
 def fresh(args):
     if UNIT.exists() or ENV_FILE.exists():
         raise InstallError("An existing installation was detected. Use upgrade mode; no overwrites.")
+    # An interrupted previous fresh install may have left credentials but
+    # no unit. Do not reset them; require the owner to inspect them first.
+    first_install_secrets = (ETC / "owner-password", ETC / "admin-password")
+    leftovers = [str(p) for p in first_install_secrets if p.exists()]
+    if leftovers:
+        raise InstallError("Incomplete previous installation: credentials already exist: " +
+                           ", ".join(leftovers) + ". Inspect and reconcile before retrying.")
     domain=validate_domain(args.domain)
     port=valid_port(args.port)
     port_available(port)
@@ -529,7 +538,7 @@ def fresh(args):
     started=False
     try:
         step("Verify and install release")
-        install_release(backup); installed=True
+        install_release(backup, 'fresh'); installed=True
         if args.with_dc:
             install_dc()
         owner_pass, admin_pass=create_credentials()
@@ -543,13 +552,34 @@ def fresh(args):
             install_caddy(domain,port,backup)
     except BaseException:
         step("Installation incomplete; restoring runtime and stopping newly created unit")
+        # Credentials and the environment file were absent at entry; all
+        # created files below belong to this failed attempt and must be
+        # cleaned up so the *same* fresh command can be retried.
+        cleanup_errors = []
         if UNIT.exists():
-            run("systemctl","disable","--now",SERVICE)
-            UNIT.unlink(missing_ok=True)
-            run("systemctl","daemon-reload")
+            try:
+                run("systemctl","disable","--now",SERVICE)
+            except Exception as error:
+                cleanup_errors.append(str(error))
+            try:
+                UNIT.unlink(missing_ok=True)
+                run("systemctl","daemon-reload")
+            except Exception as error:
+                cleanup_errors.append(str(error))
         if installed or (backup/"runtime/rollback.json").exists():
-            rollback_release(backup)
-        print(tr("Credentials and private state have NOT been printed or deleted."))
+            try:
+                rollback_release(backup)
+            except Exception as error:
+                cleanup_errors.append(str(error))
+        for path in (ENV_FILE, *first_install_secrets):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as error:
+                cleanup_errors.append(str(error))
+        if cleanup_errors:
+            print("Cleanup requires manual attention: " + "; ".join(cleanup_errors),
+                  file=sys.stderr)
+        print("Private state and workspaces have not been deleted.")
         print(tr("For troubleshooting, inspect"), backup)
         raise
     print("\n" + tr("SUCCESS: Core MCP {version}", version=VERSION))
