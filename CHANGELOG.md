@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — smart installer defaults
+
+- Offer manual domain entry first and a detected public IPv4 `IP.sslip.io` domain as the **second, default-recommended** choice.
+- Detect over HTTPS with bounded timeouts, a direct connection (no proxy exit-IP confusion), validation that rejects private/multicast/reserved IPv4, and graceful fallback to manual entry.
+- Preserve explicit `--domain` and offline Dry Run behavior, plus full Chinese/English prompts.
+- Default the final interactive installation confirmation to **Yes** (`[Y/n]`), while preserving explicit `n` and headless `--yes` safeguards.
+- Add offline unit and guided-interaction regression coverage.
+
 ## Unreleased — 2026-10-14 installer hotfix
 
 - Fixed fresh installs on new servers incorrectly requiring private `BASELINE.json`.

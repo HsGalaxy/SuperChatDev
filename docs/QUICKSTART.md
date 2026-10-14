@@ -16,6 +16,8 @@ You do **not** need to clone the repo. By default, the first menu offers Simplif
 
 **Security:** The one-liner downloads source over HTTPS and runs it as root. Read and trust the script before installing; see the [Installation guide](INSTALLATION.md) for a review-first command.
 
+The fresh-install wizard offers `IP.sslip.io` as the second/default choice after detecting a public IPv4. Final confirmation defaults to `[Y/n]`.
+
 ## Connect ChatGPT Web
 
 - MCP endpoint: `https://YOUR_DOMAIN/mcp`

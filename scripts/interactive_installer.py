@@ -108,6 +108,74 @@ def valid_port(value: int) -> int:
         raise InstallError("The loopback port must be between 1025 and 65535")
     return value
 
+# These are external IP-echo endpoints, not DNS configuration or system
+# metadata services. Never accept a non-public address as a suggestion.
+PUBLIC_IPV4_ENDPOINTS = (
+    "https://api.ipify.org",
+    "https://ipv4.icanhazip.com",
+    "https://checkip.amazonaws.com",
+)
+
+
+def parse_public_ipv4(value: str) -> str | None:
+    try:
+        address = ipaddress.ip_address(value.strip())
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(address, ipaddress.IPv4Address):
+        return None
+    if not address.is_global or address.is_multicast or address.is_reserved or address.is_unspecified:
+        return None
+    return str(address)
+
+
+def detect_public_ipv4() -> str | None:
+    # Avoid HTTP(S)_PROXY: a proxy's *own* exit IP is not the machine's.
+    # Timeouts and response caps keep onboarding usable on restricted hosts.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    for endpoint in PUBLIC_IPV4_ENDPOINTS:
+        try:
+            request = urllib.request.Request(
+                endpoint, headers={"User-Agent": "SuperChatDev-Installer/0.3",
+                                   "Accept": "text/plain"})
+            with opener.open(request, timeout=2.5) as response:
+                data = response.read(65)
+            if len(data) > 64:
+                continue
+            ip = parse_public_ipv4(data.decode("ascii", errors="strict"))
+            if ip is not None:
+                return ip
+        except (OSError, ValueError, UnicodeError):
+            continue
+    return None
+
+
+def choose_install_domain() -> str:
+    print("\n" + tr("Detecting your server's public IPv4 address..."), flush=True)
+    ip = detect_public_ipv4()
+    options = [("1", tr("Enter my own domain"))]
+    suggested = f"{ip}.sslip.io" if ip else None
+    if suggested:
+        options.append(("2", tr("Use suggested sslip.io domain: {domain}", domain=suggested)))
+        print(tr("Detected public IPv4: {ip}", ip=ip))
+        print(tr("The detected address may be an outbound gateway; verify that inbound traffic reaches this VPS."))
+    else:
+        print(tr("Public IPv4 detection was unavailable; you can still enter a domain manually."))
+    selected = choose(tr("Choose your MCP domain:"), options,
+                      "2" if suggested else "1")
+    if selected == "2" and suggested:
+        print(tr("Selected MCP domain: {domain}", domain=suggested))
+        return suggested
+    while True:
+        value = input(tr("Public MCP domain (e.g. mcp.yourdomain.org): ")).strip()
+        try:
+            return validate_domain(value)
+        except InstallError as error:
+            print(tr("Invalid domain, please try again: {reason}",
+                     reason=error_message(str(error))))
+
+
+
 def quote_env(value: str) -> str:
     if not isinstance(value, str) or "\n" in value or "\r" in value or "\0" in value:
         raise InstallError("Invalid EnvironmentFile value")
@@ -645,12 +713,13 @@ def main():
     if args.mode is None: args.mode="fresh"
     if args.mode=="fresh":
         if not args.domain:
-            if args.dry_run: args.domain="mcp.my-domain.org"
+            if args.dry_run:
+                args.domain="mcp.my-domain.org"
             elif sys.stdin.isatty():
-                args.domain=input(tr("Public MCP domain (e.g. mcp.yourdomain.org): ")).strip()
+                args.domain=choose_install_domain()
             else:
                 raise InstallError("--domain is required for non-interactive installation")
-        validate_domain(args.domain)
+        args.domain=validate_domain(args.domain)
         valid_port(args.port)
         if not args.proxy:
             if args.dry_run or not sys.stdin.isatty(): args.proxy="external"
@@ -682,7 +751,7 @@ def main():
         raise InstallError("Run the actual installation as root in your SSH terminal.")
     if not args.yes and not sys.stdin.isatty():
         raise InstallError("A non-interactive privileged install requires explicit --yes.")
-    if not args.yes and not confirm(tr("Proceed with privileged changes?"),False):
+    if not args.yes and not confirm(tr("Proceed with privileged changes?"),True):
         print(tr("Cancelled."));return 0
     if args.mode=="fresh": fresh(args)
     else: upgrade()

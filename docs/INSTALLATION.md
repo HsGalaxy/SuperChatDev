@@ -27,6 +27,12 @@ less superchatdev-install.sh
 sudo bash superchatdev-install.sh --lang en
 ```
 
+## Smart domain selection (fresh install)
+
+Before asking for a domain, the installer checks the server's public IPv4 using HTTPS IP-echo endpoints, rejecting non-public, reserved and multicast addresses. The menu offers manual entry as **option 1** and `IP.sslip.io` as **option 2**. When detection succeeds, **option 2 is the suggested default**; pressing Enter selects it. If detection fails, installation can continue using a manually entered domain.
+
+`sslip.io` is a third-party wildcard DNS service; the detected IP may represent outbound NAT rather than publicly accessible inbound traffic. Managed Caddy certificates still require DNS and inbound TCP ports 80/443. IP detection is skipped when `--domain` is specified, in unattended installations, and during Dry Run. The final confirmation defaults to **`[Y/n]`** (Enter installs, `n` cancels).
+
 ## Fresh install
 
 Choose **Fresh install** and provide a DNS name. Choose **Managed Caddy** to configure automatic HTTPS certificates (requires working DNS and ports 80/443), or **Existing reverse proxy** if you already have Nginx/Caddy/another proxy terminating HTTPS.

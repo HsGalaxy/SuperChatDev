@@ -28,7 +28,22 @@ sudo bash superchatdev-install.sh
 
 直接运行从 GitHub 下载的单文件脚本同样可以安装，它会先获取完整源码。安装向导不会把真实凭据打印到终端。
 
-## 3. 英文与自动化
+## 3. 智能域名选择（首次安装）
+
+向导会先尝试通过 HTTPS 检测当前机器的公网 IPv4，例如 `1.2.3.4`，再询问：
+
+```text
+请选择 MCP 域名：
+  1. 手动输入域名（已有域名）
+  2. 自动推荐：1.2.3.4.sslip.io（无需注册域名）
+请选择 [2]：
+```
+
+**第二项是默认推荐，回车即可选用。** 你也可以选择 `1`，手动输入已有域名；若自动 IP 检测失败，安装器不会退出，而是进入手动输入。检测服务无法识别内网/组播/保留 IP 为可用的公网地址。自动检测不在升级、Dry Run 或已经指定 `--domain` 的自动化安装里执行。
+
+`sslip.io` 的 DNS 服务由第三方提供，自动查询公网地址时第三方查询服务也会看到服务器的出口 IP。检测 IP 可能是 NAT/代理出口，因此选用推荐域名前，需要确认 80/443 公网入站流量真的能够抵达该 VPS。最终确认 **`[Y/n]`**：回车继续，输入 `n` 取消，不会静默安装。
+
+## 4. 英文与自动化
 
 ```bash
 # 英文向导
@@ -43,7 +58,7 @@ curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.
 
 非交互的真实安装必须明确指定 `--mode`、`--domain`（首次安装）、`--proxy`（首次安装建议）与 `--yes`，并以 root 运行。无需交互时请先执行 Dry Run；不要把 `--yes` 用作绕过安全审查的手段。
 
-## 4. 新装模式
+## 5. 新装模式
 
 - 仅在尚未存在 SuperChatDev 服务和环境文件的机器上使用。
 - 默认监听 `127.0.0.1:18787`，不应将后端 HTTP 端口直接开放到公网。
@@ -52,13 +67,13 @@ curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.
 - 创建 OAuth 与后台两份独立随机密码，文件位于 `/etc/chatgpt-dev-mcp/`，仅 root 能访问。
 - 工作区在 `/var/lib/chatgpt-dev-mcp/workspace`，状态在 `/var/lib/chatgpt-dev-mcp/state`。
 
-## 5. 升级模式
+## 6. 升级模式
 
 执行相同的一键命令，存在旧服务时默认选择升级。升级会检查发行 SHA-256 和现有安装基线，保留**账户、密码、OAuth 状态、项目、服务 unit 及反向代理**。如果版本文件被用户自己改过，可能会拒绝升级并要求人工合并，避免意外覆盖。
 
 升级会重启 MCP 网关，期间 ChatGPT 连接可能短暂中断；尚未启用 Access Token 持久化的旧连接可能需要重新授权。备份默认保存在 `/var/backups/chatgpt-dev-mcp-installer`。请额外备份真正重要的工作区及私有状态。
 
-## 6. 安装后
+## 7. 安装后
 
 ```bash
 systemctl status chatgpt-dev-mcp --no-pager

@@ -20,6 +20,8 @@ curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.
 curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh | sudo bash -s -- --lang en
 ```
 
+首次安装会先检测公网 IPv4，并推荐使用 `IP.sslip.io` 作为**第二项（回车默认选择）**；也能手动输入域名。最终确认 `[Y/n]` 默认继续安装。
+
 ## 接入 ChatGPT
 
 1. 安装器输出 `https://你的域名/mcp` 和 `https://你的域名/admin/`。

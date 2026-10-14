@@ -23,6 +23,21 @@ curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.
 
 You don't need to clone the repository. The installer downloads the public source, verifies the release manifest, and guides you through installation/upgrade, DNS domain, HTTPS via managed Caddy or an existing reverse proxy, optional Desktop Commander, low-privilege service accounts, credentials, and health checks.
 
+### Smart domain suggestions
+
+During a fresh interactive install, SuperChatDev attempts to detect the server's **public IPv4** over HTTPS and offers:
+
+```text
+Choose your MCP domain:
+  1. Enter my own domain
+  2. Use suggested sslip.io domain: 1.2.3.4.sslip.io
+Choose [2]:
+```
+
+If a public IPv4 is detected, **option 2 is the suggested default**; just press Enter. Otherwise, the wizard falls back to manual domain input. `1.2.3.4` above is an example, not a hardcoded address. The final install confirmation is now **`[Y/n]`**: Enter proceeds, `n` cancels.
+
+> `sslip.io` is an external wildcard DNS service, not a guarantee of public reachability. The detected address may be an outbound NAT gateway. Your VPS must still receive inbound connections on ports 80/443 for managed Caddy HTTPS certificates. Auto-detection runs only during interactive fresh installs without a supplied `--domain`; scripted installs and Dry Run skip it.
+
 > **Security:** This executes publicly downloaded source as root. Review the script and trust the repository before running it. A real HTTPS hostname, usable DNS and access to GitHub are needed. Installation alone does not register the MCP app inside ChatGPT.
 
 ### Review before running
