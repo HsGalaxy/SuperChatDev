@@ -67,6 +67,6 @@ SuperChatDev **Core 模式共 16 个工具**，尽量让模型一眼知道什么
 
 旧文本必须唯一精确匹配；重复时可以用 `@@ 函数签名` 限定范围。不会自动模糊忽略缩进或改写引号。补丁会保留未修改行的 CRLF/LF，新行沿用局部换行格式。继续建议提供 `expected_sha256`。
 
-**PTY 是可选模式。** 默认 Core 仍然是 **16 个工具**。在管理后台改为 `interactive` 或 `legacy` 后，`job_start` 可指定 `tty:true`，使用 `job_input` 发送文字，再用 `job_read` 获取输出。系统需要 util-linux 的 `script`；每次输入最多 4 KiB，Socket 限制为仅服务账户可访问。 对有副作用的输入，可为 `job_input` 提供稳定的 `request_id`；同一任务内重复发送相同请求不会再次输入，修改相同 ID 的内容会被拒绝。PTY 可能回显密码，因此输入敏感信息前必须了解终端的回显策略。客户端需要刷新、审核并发布动作。
+**PTY 是可选模式。** 默认 Core 仍然是 **16 个工具**。在管理后台改为 `interactive` 或 `legacy` 后，`job_start` 可指定 `tty:true`，使用 `job_input` 发送文字，再用 `job_read` 获取输出。系统需要 util-linux 的 `script`；每次输入最多 4 KiB，Socket 限制为仅服务账户可访问。 对有副作用的输入，可为 `job_input` 提供稳定的 `request_id`；同一任务内重复发送相同请求不会再次输入，修改相同 ID 的内容会被拒绝。PTY 可能回显密码，因此输入敏感信息前必须了解终端的回显策略。客户端需要刷新、审核并发布动作。 注意：`job_input` 返回 `input_accepted:true` 只表示输入已写入终端，不代表程序立即输出了答复。请继续以返回的 `next_offset` 调用 `job_read`，不要因为暂时未看到答复而重复发送输入。
 
 **性能：** Job 准入由扫描所有历史任务改为只核对私有状态目录下的活跃标记。旧安装首次启动时迁移索引，`job_list` 仍保留完整历史查询。保留跨进程 `flock` 以防止竞态；**不引入 Bubblewrap、不改安全文件写入机制**。

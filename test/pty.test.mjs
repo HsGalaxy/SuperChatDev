@@ -28,15 +28,35 @@ async function sendWhenReady(jobs,id,text){
  throw new Error('PTY socket was never ready');
 }
 
+// Accepting PTY input and the command producing output are different events.
+// Never re-send stdin just because output is not yet available: advance the
+// durable log cursor instead, exactly as an MCP client must do.
+async function outputUntil(initial, expected, reader) {
+ let seen=initial.output||'';
+ let offset=initial.next_offset??0;
+ for(let attempt=0;attempt<25;attempt++){
+   if(expected.test(seen))return seen;
+   const next=await reader(offset);
+   const result=next?.structuredContent??next;
+   assert.ok(result && typeof result==='object',JSON.stringify(next));
+   seen+=result.output||'';
+   offset=result.next_offset??offset;
+   if(['failed','cancelled','interrupted'].includes(result.status))
+     assert.fail('PTY ended before expected output: '+seen);
+ }
+ assert.match(seen,expected,'PTY output did not arrive after polling');
+ return seen;
+}
+
 test('PTY interactive command exposes a terminal and accepts later input', {skip:!available}, async t=>{
  const {jobs}=await fixture(t);
  const command='test -t 0 && echo TTY_READY; IFS= read -r value; echo "ANSWER:$value"';
  const session=await jobs.start({argv:['bash','-c',command],tty:true,wait_ms:0});
  assert.equal(session.tty,true);
  const answer=await sendWhenReady(jobs,session.id,'hello\n');
- const text=(answer.output||'')+' '+(answer.output_preview||'');
+ const text=await outputUntil(answer,/ANSWER:hello/,offset=>
+   jobs.read({job_id:session.id,offset,max_bytes:4096,wait_ms:500}));
  assert.match(text,/TTY_READY/);
- assert.match(text,/ANSWER:hello/);
  assert.equal(answer.input_accepted,true);
  assert.equal(answer.input_bytes,6);
  for(let i=0;i<35;i++){
@@ -127,7 +147,12 @@ test('MCP Core refuses PTY; interactive profile routes PTY and input through job
  }
  assert.equal(accepted.isError,undefined,JSON.stringify(accepted));
  assert.equal(accepted.structuredContent.input_accepted,true);
- assert.match(accepted.structuredContent.output,/REPLY:ok/);
+ const transcript=await outputUntil(accepted.structuredContent,/REPLY:ok/,async offset=>{
+   const next=await call('job_read',{job_id,offset,max_bytes:4096,wait_ms:500});
+   assert.notEqual(next.isError,true,JSON.stringify(next));
+   return next.structuredContent;
+ });
+ assert.match(transcript,/READY/);
 });
 
 test('exact replace needs filesystemRead and filesystemWrite permissions',async t=>{
@@ -160,7 +185,8 @@ test('PTY retry with the same request_id cannot type twice or alter the input', 
  assert.equal(dup.input_reused,true);
  await assert.rejects(jobs.input({job_id:session.id,chars:'altered\n',request_id:'type-first'}),/CONFLICT/);
  const second=await jobs.input({job_id:session.id,chars:'beta\n',request_id:'type-second',offset:0,wait_ms:1000});
- assert.match(second.output,/ONE:alpha/);
- assert.match(second.output,/TWO:beta/);
- assert.ok(!second.output.includes('TWO:alpha'));
+ const transcript=await outputUntil(second,/TWO:beta/,offset=>
+   jobs.read({job_id:session.id,offset,max_bytes:4096,wait_ms:500}));
+ assert.match(transcript,/ONE:alpha/);
+ assert.ok(!transcript.includes('TWO:alpha'));
 });
