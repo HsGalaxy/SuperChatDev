@@ -43,13 +43,26 @@ async function capture(step, spec, job) {
 async function cancelJobs(includeBackground) {
   // Also recover a job admitted immediately before a coordinator interruption.
   const associated = (await jobs.list()).filter(job => job.batch_execution_id === state.execution_id);
+  const awaiting = [];
   for (const job of associated) {
     const step = state.steps.find(step => step.id === job.batch_step_id);
     if (step && !step.job_id) step.job_id = job.id;
     if (!finishedJob.has(job.status) && (includeBackground || !step?.background)) {
-      try { await jobs.cancel({ job_id: job.id }); } catch (error) { state.cleanup_errors ??= []; state.cleanup_errors.push(error.message); }
+      try {
+        const result = await jobs.cancel({ job_id: job.id });
+        if (!finishedJob.has(result.status)) awaiting.push(job.id);
+      } catch (error) { state.cleanup_errors ??= []; state.cleanup_errors.push(error.message); }
     }
   }
+  const deadline = Date.now() + 500;
+  while (awaiting.length && Date.now() < deadline) {
+    await delay(25);
+    for (let i = awaiting.length-1; i >= 0; i--) {
+      try { if (finishedJob.has((await jobs.status(awaiting[i])).status)) awaiting.splice(i, 1); }
+      catch (error) { state.cleanup_errors ??= []; state.cleanup_errors.push(error.message); awaiting.splice(i, 1); }
+    }
+  }
+  if (awaiting.length) state.cleanup_pending_jobs = awaiting;
 }
 
 try {
@@ -110,7 +123,7 @@ try {
       try {
         const args = spec.type === 'exec' ? { argv: spec.argv, cwd: path.join(plan.cwd, spec.cwd), env: spec.env, timeout_seconds: spec.timeout_seconds }
           : { argv: [process.execPath, helper], cwd: '.', stdin: JSON.stringify({ workspace: jobs.workspace, cwd: plan.cwd, step: spec }), timeout_seconds: spec.type === 'http_check' ? spec.timeout_seconds + 5 : 60, job_kind: 'workspace_helper' };
-        if (['write','mkdir','patch'].includes(spec.type)) args.argv = ['/usr/bin/flock', '-x', path.join(jobs.executionHome || jobs.workspace, '.workspace-patch.lock'), process.execPath, spec.type==='patch'?patchWorker:helper];
+        if (['write','replace','mkdir','patch'].includes(spec.type)) args.argv = ['/usr/bin/flock', '-x', path.join(jobs.executionHome || jobs.workspace, '.workspace-patch.lock'), process.execPath, spec.type==='patch'?patchWorker:helper];
         if (spec.type === 'container_build') {
           if (!config.containerBuildSocket) throw new Error('Rootless container builder is not configured');
           Object.assign(args, { argv: ['/usr/bin/python3', buildClient], stdin: JSON.stringify({ workspace: jobs.workspace, cwd: plan.cwd, step: spec, build_socket: config.containerBuildSocket }), timeout_seconds: spec.timeout_seconds + 60 });

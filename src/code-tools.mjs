@@ -27,6 +27,30 @@ function globMatch(pattern,text) {
   while(pattern[p]==='*')p++;
   return p===pattern.length;
 }
+// Preserve a stable schema: an optional glob containing '/' matches the
+// full cwd-relative path; simple globs continue to match basenames.
+function searchGlob(pattern, filename) {
+  if (!pattern) return true;
+  if (!pattern.includes('/')) return globMatch(pattern, path.posix.basename(filename));
+  const escaped = pattern.split(/(\*\*|\*|\?)/).map(part =>
+    part === '**' ? '.*' : part === '*' ? '[^/]*' : part === '?' ? '[^/]' :
+    part.replace(/[|\\{}()[\]^$+?.]/g, '\\$&')).join('');
+  const regex = new RegExp('^' + escaped.replace(/\.\*\//g, '(?:.*/)?') + '$');
+  return regex.test(filename);
+}
+function context(lines, index) {
+  const start = Math.max(0, index - 2), end = Math.min(lines.length, index + 3);
+  return lines.slice(start,end).map((text,i) => ({
+    line: start+i+1, text: text.slice(0,300).replace(/\r$/,'')
+  }));
+}
+function pathHint(cwd, requested, error) {
+  if (!['ENOENT','ENOTDIR'].includes(error?.code) && !/no such file|not a directory/i.test(error?.message || '')) return error.message;
+  const project = relativePath(cwd), full = relativePath(requested);
+  if (project !== '.' && full.startsWith(project + '/'))
+    return `Path includes cwd prefix; use "${full.slice(project.length + 1)}" instead of "${full}" when cwd="${project}"`;
+  return error.message;
+}
 const encodeCursor = data => Buffer.from(JSON.stringify(data)).toString('base64url');
 
 export class CodeTools {
@@ -71,7 +95,7 @@ export class CodeTools {
           next_read:more?{path:result.path,start_line:end+1,line_count:count,expected_sha256:data.sha256}:null,
           truncated:more && end<start+count-1});
         if(more&&!output)result.error='Output budget exhausted or line exceeds max_bytes; increase budget or use an authorized job';
-      }catch(error){result.error=error.message;}
+      }catch(error){result.error=pathHint(cwd,request.path,error);}
       results.push(result);
     }
     return {cwd:relativePath(cwd),files:results,output_bytes:max_bytes-remaining,
@@ -82,7 +106,7 @@ export class CodeTools {
     if(typeof glob!=='string'||glob.length>256||typeof case_sensitive!=='boolean')throw new Error('Invalid search filter');
     requireInteger(limit,40,1,200,'limit');
     const data=await this.reader.inventory(cwd,directory,32,false);
-    const files=data.entries.filter(e=>e.type==='file'&&(!glob||globMatch(glob,path.posix.basename(e.path))));
+    const files=data.entries.filter(e=>e.type==='file'&&searchGlob(glob,e.path));
     const id=digest(JSON.stringify([cwd,directory,query,glob,case_sensitive,files.map(e=>e.path)]));
     let {index,line}=cursor(token,id);const matches=[],skipped=[];let scanned=0,bytes=0,skippedCount=0;
     const needle=case_sensitive?query:query.toLocaleLowerCase();
@@ -96,7 +120,7 @@ export class CodeTools {
       for(;line<lines.length;line++) {
         if((case_sensitive?lines[line]:lines[line].toLocaleLowerCase()).includes(needle)){
           const preview=lines[line].slice(0,600).replace(/\r$/,'');
-          matches.push({path:files[index].path,line:line+1,text:preview,text_truncated:lines[line].length>600,sha256:file.sha256});
+          matches.push({path:files[index].path,line:line+1,text:preview,text_truncated:lines[line].length>600,context:context(lines,line),sha256:file.sha256});
           if(matches.length>=limit){line++;break;}
         }
       }
@@ -104,7 +128,7 @@ export class CodeTools {
     }
     return {cwd:relativePath(cwd),query,matches,scanned_files:scanned,skipped,skipped_count:skippedCount,warnings:data.warnings,
       next_cursor:index<files.length?encodeCursor({query:id,index,line}):null,traversal_incomplete:data.limited,
-      next_step:'Search is literal and excludes build/dependency/secret paths. Read matches with fs_read. Live edits can change pagination; hashes protect subsequent edits.'};
+      next_step:'Search is literal with +/-2 context lines; glob supports src/**/*.mjs and basename patterns. Read full results with fs_read. Live edits can change pagination; hashes protect subsequent edits.'};
   }
 }
 export const codeTools=[

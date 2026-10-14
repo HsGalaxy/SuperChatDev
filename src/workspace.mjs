@@ -39,7 +39,7 @@ export function validatePlan(args) {
   for (let i = 0; i < args.steps.length; i++) {
     const input = args.steps[i];
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error(`Invalid step ${i + 1}`);
-    const fields = { write: ['path', 'content', 'expected_sha256', 'create_only'], mkdir: ['path'], patch: ['patch', 'expected_sha256'], container_build: ['context', 'dockerfile', 'output', 'network', 'timeout_seconds'], exec: ['argv', 'command', 'cwd', 'env', 'background', 'timeout_seconds'], http_check: ['url', 'method', 'expected_status', 'timeout_seconds', 'retry_interval_ms'] }[input.type];
+    const fields = { write: ['path', 'content', 'expected_sha256', 'create_only'], replace: ['path', 'old_text', 'new_text', 'expected_sha256'], mkdir: ['path'], patch: ['patch', 'expected_sha256'], container_build: ['context', 'dockerfile', 'output', 'network', 'timeout_seconds'], exec: ['argv', 'command', 'cwd', 'env', 'background', 'timeout_seconds'], http_check: ['url', 'method', 'expected_status', 'timeout_seconds', 'retry_interval_ms'] }[input.type];
     if (!Array.isArray(fields) || Object.keys(input).some(key => !['id', 'type', 'depends_on', ...fields].includes(key))) throw new Error(`Unknown step type or field in step ${i + 1}`);
     const id = input.id ?? `step_${i + 1}`;
     if (typeof id !== 'string' || !stepID.test(id) || ids.has(id)) throw new Error('Step IDs must be unique and contain 1..64 letters, digits, underscores or hyphens');
@@ -47,8 +47,19 @@ export function validatePlan(args) {
     const depends_on = input.depends_on ?? (i ? [plan.steps[i - 1].id] : []);
     if (!Array.isArray(depends_on) || depends_on.some(dependency => typeof dependency !== 'string') || new Set(depends_on).size !== depends_on.length) throw new Error(`Invalid depends_on for ${id}`);
     const step = { id, type: input.type, depends_on };
-    if (input.type === 'write' || input.type === 'mkdir') {
+    if (['write', 'replace', 'mkdir'].includes(input.type)) {
       step.path = relative(input.path, `${id}.path`);
+      if (input.type === 'replace') {
+        if (typeof input.old_text !== 'string' || !input.old_text ||
+            typeof input.new_text !== 'string' ||
+            Buffer.byteLength(input.old_text) > 256 * 1024 ||
+            Buffer.byteLength(input.new_text) > 256 * 1024)
+          throw new Error('replace requires nonempty old_text and string new_text, each <=256 KiB');
+        if (typeof input.expected_sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(input.expected_sha256))
+          throw new Error('replace requires the exact current expected_sha256 from fs_read');
+        Object.assign(step, { old_text: input.old_text, new_text: input.new_text,
+                              expected_sha256: input.expected_sha256.toLowerCase() });
+      }
       if (input.type === 'write') {
         if (typeof input.content !== 'string') throw new Error(`Write step ${id} requires content`);
         if (input.expected_sha256 !== undefined && (typeof input.expected_sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(input.expected_sha256))) throw new Error(`Invalid expected_sha256 for ${id}`);
@@ -103,7 +114,7 @@ export function validatePlan(args) {
   const ancestors = id => {const set=new Set();const walk=x=>{for(const d of byID.get(x).depends_on){if(!set.has(d)){set.add(d);walk(d);}}};walk(id);return set;};
   const writes=new Map();
   for(const step of plan.steps){
-    const paths=step.type==='write'?[step.path]:step.type==='patch'?parsePatch(step.patch).map(f=>f.path):[];
+    const paths=['write','replace'].includes(step.type)?[step.path]:step.type==='patch'?parsePatch(step.patch).map(f=>f.path):[];
     for(const file of paths){
       const key=path.posix.normalize(file);
       for(const earlier of writes.get(key)||[]){
@@ -134,7 +145,7 @@ export class Workspace {
   async execute(args) {
     const plan = validatePlan(args);
     for(const step of plan.steps){
-      const targets=step.type==='patch'?parsePatch(step.patch).map(f=>f.path):['write','mkdir'].includes(step.type)?[step.path]:[];
+      const targets=step.type==='patch'?parsePatch(step.patch).map(f=>f.path):['write','replace','mkdir'].includes(step.type)?[step.path]:[];
       for(const file of targets)if(isInside(this.config.dataRoot,path.resolve(this.config.workspace,plan.cwd,file)))throw new Error('Batch cannot edit private MCP state');
     }
     const wait_ms = requireInteger(args.wait_ms, 1000, 0, 10000, 'wait_ms');
@@ -261,17 +272,19 @@ const stepSchema = {
   type: 'object', additionalProperties: false,
   properties: {
     id: { type: 'string', description: 'Unique step ID. Defaults to step_1, step_2, etc.' },
-    type: { type: 'string', enum: ['write', 'mkdir', 'patch', 'container_build', 'exec', 'http_check'] },
+    type: { type: 'string', enum: ['write', 'replace', 'mkdir', 'patch', 'container_build', 'exec', 'http_check'] },
     depends_on: { type: 'array', items: { type: 'string' }, description: 'Omit to depend on previous step; [] means independent. Explicit dependencies enable bounded parallel execution.' },
-    path: { type: 'string', description: 'write/mkdir: path relative to batch cwd. Parent directories are created.' },
+    path: { type: 'string', description: 'write/replace/mkdir: path relative to batch cwd. Parent directories are created.' },
     create_only: {type:'boolean',description:'write: atomically refuse an already existing path. Use for new files.'},
     content: { type: 'string', description: 'write: complete UTF-8 content, required. Files are atomically replaced.' },
+    old_text: { type: 'string', description: 'replace: exact existing UTF-8 snippet; must occur precisely once.' },
+    new_text: { type: 'string', description: 'replace: replacement UTF-8 snippet; file is atomically replaced if hash still matches.' },
     context: { type: 'string', description: 'container_build: context directory relative to batch cwd, default dot. Symlinks/special files rejected; common secrets, .git, node_modules and target excluded. Use a minimal context; .dockerignore is processed by builder, not a secret filter.' },
     dockerfile: { type: 'string', description: 'container_build: Dockerfile path relative to context, default Dockerfile.' },
     output: { type: 'string', description: 'container_build: new docker-archive output path relative to batch cwd, default image.tar. Refuses overwrite; export with file_export.' },
     network: { type: 'string', enum: ['none', 'private'], description: 'container_build: RUN network defaults to none. private enables slirp outbound networking; no host network mode. Base image pulls can still use registry network.' },
-    patch: { type: 'string', description: 'patch: standard unified diff with ---/+++ and numbered @@ hunks. Exact positions/context, no fuzzy matching. Supports text adds/updates/deletes. Preflights all files; each replacement atomic, ordinary errors attempt rollback, not crash-atomic across files.' },
-    expected_sha256: { oneOf: [{ type: 'string' }, { type: 'object', additionalProperties: { type: 'string' } }], description: 'write: current-file hash. patch: map of project-relative paths to hashes. Mismatch fails without editing.' },
+    patch: { type: 'string', description: 'patch: unified diff with ---/+++ and @@ hunks; tolerates small wrong counts and unique-context relocation within 20 lines. No fuzzy content matching. Supports text adds/updates/deletes. Preflights all files; each replacement atomic, ordinary errors attempt rollback, not crash-atomic across files.' },
+    expected_sha256: { oneOf: [{ type: 'string' }, { type: 'object', additionalProperties: { type: 'string' } }], description: 'write/replace: current-file hash (required for replace). patch: map of project-relative paths to hashes. Mismatch fails without editing.' },
     argv: { type: 'array', minItems: 1, items: { type: 'string' }, description: 'exec: executable and arguments. Specify argv or command.' },
     command: { type: 'string', description: 'exec: explicit shell command run via bash --noprofile --norc -c. Specify command or argv.' },
     cwd: { type: 'string', description: 'exec: working directory relative to batch cwd; defaults to dot.' },
@@ -287,7 +300,7 @@ const stepSchema = {
 
 export const workspaceTools = [
   { name: 'workspace_execute', title: 'Execute a durable workspace batch',
-    description: 'Combine UTF-8 writes, exact unified patches, rootless container image builds, mkdir, foreground commands, background service starts and retried HTTP checks in one durable dependency graph. Defaults to sequential order; explicit depends_on and [] enable parallel work. Entire plan is validated before effects. Files/commands run as the existing execution user. Returns per-step states, outputs, errors and job IDs; long plans return an execution_id for workspace_read. Use a stable request_id when retrying identical calls to avoid duplicate effects. Writes require content. Mark long-lived servers background:true and verify readiness with http_check. No rollback or system-level autostart.',
+    description: 'Combine UTF-8 writes, unique exact text replacements, safe unified patches, rootless container image builds, mkdir, foreground commands, background service starts and retried HTTP checks in one durable dependency graph. Defaults to sequential order; explicit depends_on and [] enable parallel work. Entire plan is validated before effects. Files/commands run as the existing execution user. Returns per-step states, outputs, errors and job IDs; long plans return an execution_id for workspace_read. Use a stable request_id when retrying identical calls to avoid duplicate effects. Writes require content. Mark long-lived servers background:true and verify readiness with http_check. No rollback or system-level autostart.',
     inputSchema: { type: 'object', additionalProperties: false, properties: {
       steps: { type: 'array', minItems: 1, maxItems: 32, items: stepSchema },
       cwd: { type: 'string', default: '.', description: 'Project directory relative to workspace_root. Writes/mkdir can create a new project; exec requires its cwd to exist.' },

@@ -49,9 +49,10 @@ export class Jobs {
     let owner;
     try { owner = await readJSON(path.join(dir, 'owner.json')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (!terminalStates.has(state.status) && !owner && Date.now() - Date.parse(state.created_at) > 30000) {
-      state.status = 'interrupted';
+      const wasCancelled = await readFile(path.join(dir, 'cancel')).then(() => true, e => { if (e.code === 'ENOENT') return false; throw e; });
+      state.status = wasCancelled ? 'cancelled' : 'interrupted';
       state.finished_at = new Date().toISOString();
-      state.error = 'Worker launch was not recorded';
+      state.error = wasCancelled ? 'Cancelled before worker launch completed' : 'Worker launch was not recorded';
       await atomicJSON(path.join(dir, 'state.json'), state);
       return state;
     }
@@ -61,9 +62,10 @@ export class Jobs {
         // Only the worker writes live state; reconciliation occurs after it has exited.
         const latest = await readJSON(path.join(dir, 'state.json'));
         if (!terminalStates.has(latest.status)) {
-          latest.status = 'interrupted';
+          const wasCancelled = await readFile(path.join(dir, 'cancel')).then(() => true, e => { if (e.code === 'ENOENT') return false; throw e; });
+          latest.status = wasCancelled ? 'cancelled' : 'interrupted';
           latest.finished_at = new Date().toISOString();
-          latest.error = 'Worker exited without recording a terminal state';
+          latest.error = wasCancelled ? 'Worker exited following cancellation' : 'Worker exited without recording a terminal state';
           await atomicJSON(path.join(dir, 'state.json'), latest);
         }
         return latest;
@@ -235,14 +237,22 @@ export class Jobs {
     if (terminalStates.has(state.status)) return state;
     const dir = this.directory(job_id);
     await writeFile(path.join(dir, 'cancel'), '', { mode: 0o600 });
-    const owner = await readJSON(path.join(dir, 'owner.json'));
-    // A just-spawned Node worker may not have installed signal handlers yet.
-    // Its cancel file is checked at startup and periodically once running.
+    let owner;
+    try { owner = await readJSON(path.join(dir, 'owner.json')); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
     const latest = await readJSON(path.join(dir, 'state.json'));
-    if (latest.started_at && owner.starttime && await processIdentity(owner.pid) === owner.starttime) {
-      try { process.kill(-owner.pid, 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    if (latest.started_at && owner?.starttime && await processIdentity(owner.pid) === owner.starttime) {
+      try { process.kill(-owner.pid, 'SIGTERM'); }
+      catch (error) { if (error.code !== 'ESRCH') throw error; }
     }
-    return { ...(await this.status(job_id)), cancellation_requested: true };
+    const deadline = Date.now() + 400;
+    let current;
+    do {
+      current = await this.status(job_id);
+      if (terminalStates.has(current.status) || Date.now() >= deadline) break;
+      await delay(Math.min(25, Math.max(1, deadline - Date.now())));
+    } while (true);
+    return { ...current, cancellation_requested: true };
   }
 }
 

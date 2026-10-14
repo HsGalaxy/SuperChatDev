@@ -62,6 +62,31 @@ async function run({ workspace, cwd, step }) {
   let existing;
   try { existing = await lstat(target); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   if (existing && !existing.isFile()) throw new Error('Write target must be a regular file, not a symlink or directory');
+  if (step.type === 'replace') {
+    if (!existing || existing.isSymbolicLink()) throw new Error('replace target must be an existing regular file');
+    if (existing.size > 8 * 1024 * 1024) throw new Error('replace target exceeds 8 MiB');
+    const before = await readFile(target);
+    const sha = createHash('sha256').update(before).digest('hex');
+    if (sha !== step.expected_sha256) throw new Error('expected_sha256 mismatch; replace refused');
+    const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(before);
+    if (text.includes('\0')) throw new Error('replace does not support binary files');
+    const first = text.indexOf(step.old_text);
+    if (first < 0 || text.indexOf(step.old_text, first + 1) !== -1)
+      throw new Error('replace old_text must have exactly one occurrence');
+    const next = text.slice(0,first) + step.new_text + text.slice(first + step.old_text.length);
+    if (Buffer.byteLength(next) > 8 * 1024 * 1024) throw new Error('replace result exceeds 8 MiB');
+    const tempfile = path.join(path.dirname(target), `.workspace-${randomUUID()}.tmp`);
+    try {
+      await writeFile(tempfile, next, { flag: 'wx', mode: existing.mode & 0o777 });
+      // Recheck immediately before the atomic rename. flock serializes other
+      // SuperChatDev writes; expected_sha256 guards the read version.
+      if (createHash('sha256').update(await readFile(target)).digest('hex') !== sha)
+        throw new Error('replace target changed before commit');
+      await rename(tempfile,target);
+    } finally { await rm(tempfile, { force: true }); }
+    return { ok: true, path: path.relative(root,target), bytes: Buffer.byteLength(next),
+             sha256: createHash('sha256').update(next).digest('hex'), replacements: 1 };
+  }
   if(step.create_only && existing)throw new Error('create_only target already exists');
   if (step.expected_sha256) {
     if (!existing || createHash('sha256').update(await readFile(target)).digest('hex') !== step.expected_sha256) throw new Error('expected_sha256 mismatch; file was not overwritten');

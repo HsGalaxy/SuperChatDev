@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2 — ChatGPT Web editing/search reliability
+
+- Bounded unique-context Unified Diff relocation and small header-count tolerance.
+- Full-path search globs, nearby context previews and redundant-cwd path diagnostics.
+- More reliable cancellation acknowledgement for jobs and workspace child processes.
+- Regression tests for ambiguous hunks, context search and mistaken cwd-prefix paths.
+- Added a `workspace_execute.replace` step for unique literal substitutions, SHA-256 guarded; tool count remains 16. Refresh ChatGPT published tool actions.
+
 ## Unreleased — smart installer defaults
 
 - Offer manual domain entry first and a detected public IPv4 `IP.sslip.io` domain as the **second, default-recommended** choice.

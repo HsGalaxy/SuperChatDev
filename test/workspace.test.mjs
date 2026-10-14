@@ -224,3 +224,33 @@ test('an exited background command cannot pass by checking an unrelated healthy 
   assert.equal(result.steps[0].status, 'failed');
   assert.equal(result.steps[0].result.exit_code, 4);
 });
+
+test('unique, hash-guarded replace edits just one snippet and rejects duplicates', async t => {
+  const { batches, config } = await fixture(t);
+  const file = path.join(config.workspace, 'settings.txt');
+  await writeFile(file, 'top\nKEY=before\nbottom\n');
+  const original = await readFile(file);
+  const expected_sha256 = createHash('sha256').update(original).digest('hex');
+  const updated = await batches.execute({ wait_ms: 10000, steps: [
+    {type:'replace',path:'settings.txt',old_text:'KEY=before',new_text:'KEY=after',expected_sha256}
+  ]});
+  assert.equal(updated.status,'succeeded',JSON.stringify(updated));
+  assert.equal((await readFile(file,'utf8')),'top\nKEY=after\nbottom\n');
+  assert.equal(updated.steps[0].result.replacements,1);
+  const stale = await batches.execute({ wait_ms: 10000, steps: [
+    {type:'replace',path:'settings.txt',old_text:'KEY=after',new_text:'KEY=oops',expected_sha256}
+  ]});
+  assert.equal(stale.status,'failed',JSON.stringify(stale));
+  assert.match(stale.steps[0].error,/sha256 mismatch/);
+  await writeFile(file,'same\nsame\n');
+  const duphash = createHash('sha256').update(await readFile(file)).digest('hex');
+  const dup = await batches.execute({wait_ms:10000,steps:[
+    {type:'replace',path:'settings.txt',old_text:'same',new_text:'mutated',expected_sha256:duphash}
+  ]});
+  assert.equal(dup.status,'failed',JSON.stringify(dup));
+  assert.match(dup.steps[0].error,/exactly one occurrence/);
+  assert.equal((await readFile(file,'utf8')),'same\nsame\n');
+  await assert.rejects(batches.execute({steps:[
+    {type:'replace',path:'settings.txt',old_text:'same',new_text:'changed'}
+  ]}),/requires the exact current expected_sha256/);
+});
