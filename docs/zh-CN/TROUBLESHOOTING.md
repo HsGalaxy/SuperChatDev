@@ -25,3 +25,8 @@ Core 默认只暴露 16 个工具。核查后台工具清单；在 ChatGPT 刷�
 
 **Q：升级失败？**
 检查发行 SHA-256 是否匹配、是否存在人工修改过的生产源码；检查安装器打印的备份目录，必要时核对后手动恢复。不要直接删除 `state` 或工作区。
+
+
+**Q：安装 Node.js 时提示 `NO_PUBKEY`？**
+
+早期安装脚本在 `umask 077` 下生成的公开 GPG 密钥环可能只有 root 可读，APT 沙箱用户无法读取。先检查 `stat -c '%a %n' /usr/share/keyrings/nodesource.gpg`；若是 `600`，执行 `sudo chmod 644 /usr/share/keyrings/nodesource.gpg && sudo apt-get update`，再重新运行一键安装。新版安装器已修复公开密钥环权限。不要关闭 APT 签名验证。
