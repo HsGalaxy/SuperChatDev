@@ -1,19 +1,53 @@
 # SuperChatDev
 
-**A purpose-built MCP development runtime for ChatGPT's native web interface.**
-Not an all-in-one agent platform, not an IDE, and not another generic MCP toolbox.
+**Your ChatGPT subscription. Your server. Your code.**
 
-[简体中文（默认）](README.md) · [**English**](README.en.md) · [Installation](docs/INSTALLATION.md) · [Tool contracts](docs/TOOLS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Changelog](CHANGELOG.md)
+**MIT open source · Bring your own Linux VPS · 17 Core MCP tools · No separate model API key**
 
-SuperChatDev enables a full software development workflow directly in ChatGPT Web: upload ZIP → inspect and search code → edit → build and test → inspect Git diff → export deliverables back to the conversation.
+> **Turn native ChatGPT Web into a coding workspace on your own Linux server.**
+> Upload a ZIP → inspect and edit code → run commands → build and test → review Git → download the deliverable. All inside your existing ChatGPT conversation.
 
-## Reliability and resource isolation
+[**English**](README.en.md) · [简体中文](README.md) · [🚀 Install](#-one-line-installation) · [Tools](docs/TOOLS.md) · [Cloudflare Tunnel](docs/CLOUDFLARE.md) · [Changelog](CHANGELOG.md)
 
-v0.3.12 adds an **opt-in** isolated Runner, explicit systemd resource migration, lazy Desktop Commander lifecycle, corrected download ResourceLinks, bounded diagnostics and execution-level outcome statistics. Existing sensitive diagnostic capture settings remain unchanged. See [Reliability operations](docs/RELIABILITY.md) before applying resource changes.
+### 💸 Already paying for ChatGPT? Bring your own compute
 
-## Development log
+Many DIY coding agents require a separate model API key and token-based billing. **SuperChatDev isn't another model API client.** It's an open-source MCP development server that connects an **eligible ChatGPT workspace** to your own Linux machine. The SuperChatDev bridge **doesn't require an OpenAI API key or generate a separate model API bill** for these MCP tool calls.
 
-The Admin sidebar has a separate read-only Development Log page at /admin/#devlog (login required). It shows a searchable release history from the installed [CHANGELOG.md](CHANGELOG.md), the same record used on GitHub, not MCP runtime logs or audit traces. No MCP action refresh is needed for this UI-only feature.
+Use the **included usage and applicable limits of your existing ChatGPT subscription**, while your own VPS handles the repository, build tools, disk, network and running processes. A particularly good fit if you already discuss requirements in ChatGPT and don't want to set up a second API-backed agent just to run code.
+
+**Important: this is an alternative to separately metered model API integrations, not a claim that Codex costs extra. Codex is already included in ChatGPT plans.** Subscription costs, optional credits, and your own server bill still apply.
+
+### ⚡ Why choose SuperChatDev instead of *only* Codex?
+
+Codex is a capable coding agent with web, CLI, IDE and cloud workflows. **SuperChatDev doesn't claim to outperform Codex or be universally cheaper.** It solves a different problem: **turn your existing ChatGPT conversation into a control panel for a persistent, self-hosted Linux environment.**
+
+| Developer experience | SuperChatDev's strengths | How Codex approaches it |
+| --- | --- | --- |
+| **Entry point** | Work in your everyday ChatGPT conversation with attachments and MCP tools | Dedicated Codex Web, CLI, IDE and desktop workflows |
+| **Compute** | Persistent Linux VPS you own; choose CPU / GPU, network, dependencies and services | Managed Codex Cloud environments; CLI / IDE can also run on your machine |
+| **File handoff** | Chat attachment ZIP → edit/build/test → signed downloadable output in the same conversation | Strong repo-oriented coding, review and agent workflows |
+| **Long-running work** | Inspectable durable job IDs, paginated logs, batch dependencies and idempotent `request_id` | Uses its own task model; this is a workflow preference, not a missing Codex capability |
+| **Control** | Open-source MCP tools, Admin UI, OAuth, optional DC / Cloudflare / isolated Runner | OpenAI-maintained CLI / IDE / Cloud Agent ecosystem |
+
+**Think ChatGPT-first + bring-your-own-server, not a Codex benchmark.** If you prefer Codex's native CLI / IDE / Cloud Agent experience, Codex remains a great choice.
+
+<details>
+<summary><strong>💳 Pricing, eligibility and usage limits</strong></summary>
+
+- ChatGPT **Plus is US$20/month**, but as of October 2026, **custom MCP write/modify actions are rolling out in beta to Business, Enterprise and Edu workspaces**. A Plus subscription **alone should not be advertised as sufficient** for SuperChatDev's full edit/build workflow.
+- ChatGPT **Business Standard** is advertised at **US$20/seat/month billed annually or US$25/seat/month billed monthly**, with a **two-paid-seat minimum**. Actual custom MCP availability depends on your workspace permissions and rollout.
+- **Codex is included with ChatGPT plans** and subject to plan limits and applicable credits. SuperChatDev doesn't bypass ChatGPT usage quotas, confirmation requirements or platform policy.
+- SuperChatDev doesn't call the separately billed OpenAI API, but a supported ChatGPT subscription, your VPS, bandwidth and storage may still cost money. **Neither unlimited use nor lower total cost than Codex is promised.**
+
+Official sources: [ChatGPT Plus](https://help.openai.com/en/articles/6950777-what-is-chatgpt-plus) · [Business pricing](https://help.openai.com/en/articles/8792536-managing-billing-and-seats-in-chatgpt-business) · [Full MCP availability](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt) · [Codex availability](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan).
+
+</details>
+
+### 🎯 From one prompt to a downloadable project
+
+> “Here's my project ZIP. Inspect the source, port it to Linux, implement the missing features, run tests, review the diff, and send back the complete working ZIP.”
+
+SuperChatDev supplies the remote tools; the quality of planning, coding and results still depends on your ChatGPT model, permissions, instructions and verification.
 
 ## 🚀 One-line installation
 
@@ -49,7 +83,7 @@ sudo bash superchatdev-install.sh --lang en
 
 For an existing installation, run the same command and select **Upgrade** (the wizard defaults to upgrade if the service is detected). State, credentials, workspace and existing reverse proxy configuration are preserved. Back up your data before upgrading.
 
-## Why ChatGPT Web-first?
+## How the ChatGPT-first workflow works
 
 - Native chat-file import and export with `file_import`, `file_unpack`, `file_export`.
 - Low-latency single commands: `job_start` waits up to **500ms**, returns immediate results when complete; longer work gets durable job IDs.
@@ -76,7 +110,7 @@ file_export → downloadable project in ChatGPT
 
 ## Connecting ChatGPT
 
-After installing, register `https://YOUR_DOMAIN/mcp` in ChatGPT's MCP app configuration, and use `https://YOUR_DOMAIN/admin/` to administer the server. Your default local health check is `http://127.0.0.1:18787/health`. OAuth authorization is required. If published tool definitions are cached, refresh/review/publish actions in ChatGPT.
+After installing, register `https://YOUR_DOMAIN/mcp` in a **ChatGPT workspace enabled for custom MCP write actions**, and use `https://YOUR_DOMAIN/admin/` to administer the server. Your default local health check is `http://127.0.0.1:18787/health`. OAuth authorization is required. If published tool definitions are cached, refresh/review/publish actions in ChatGPT.
 
 ## The 17 Core tools
 
@@ -91,6 +125,10 @@ After installing, register `https://YOUR_DOMAIN/mcp` in ChatGPT's MCP app config
 | Read-only Git review | `workspace_review` |
 
 `job_start` executes **one command**; `workspace_execute` coordinates **dependent multi-step operations**. They are intentionally not interchangeable.
+
+## Reliability and development log
+
+v0.3.12 supports an opt-in isolated Runner, explicit systemd resource migrations, and execution outcome metrics. See [Reliability operations](docs/RELIABILITY.md). Release notes live in [CHANGELOG.md](CHANGELOG.md) and in the separate Admin Development Log page (/admin/#devlog), rather than filling this README with historical detail.
 
 ## Documentation
 
@@ -119,7 +157,3 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 **Limitations:** Single trusted owner only, not a multi-tenant sandbox. MCP cannot disable ChatGPT's own approval dialogs or force OAuth refresh support in every client. Jobs may survive HTTP gateway restarts, but a host reboot does not automatically resume running commands.
 
 **License:** [MIT](LICENSE) · **Current runtime:** v0.3.12
-
-## Changelog
-
-All features, fixes, security updates and migration notes are maintained in **[CHANGELOG.md](CHANGELOG.md)**. The README focuses on setup and usage.
