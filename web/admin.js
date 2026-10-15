@@ -9,7 +9,7 @@ const stateName = s => ({ succeeded:'成功',running:'运行中',queued:'排队�
 const status = s => '<span class="status status-' + esc(s) + '">' + esc(stateName(s)) + '</span>';
 const empty = (count, text='暂无记录') => '<tr><td class="empty-row" colspan="' + count + '">' + esc(text) + '</td></tr>';
 const isActive = s => ['running','queued'].includes(s);
-const pageNames = Object.freeze({overview:'总览',activity:'MCP 调用记录',jobs:'任务与批处理',files:'文件管理',git:'Git / GitHub',performance:'性能调试',settings:'系统设置',devlog:'开发日志'});
+const pageNames = Object.freeze({overview:'总览',activity:'MCP 调用记录',jobs:'任务与批处理',files:'文件管理',git:'Git / GitHub',performance:'性能调试',settings:'系统设置',devlog:'开发日志',tunnel:'Cloudflare Tunnel'});
 let developmentLog = null;
 let csrf = '', currentPage = 'overview', filesPath = '.', filesData = [], editorPath = '', fileWritable = true;
 let toolManifest = null;
@@ -97,7 +97,7 @@ byId('refresh').addEventListener('click', refreshPage);
 function refreshPage() {
   if (byId('shell').hidden) return;
   if (loading) { pendingRefresh = true; return; }
-  const loaders = { overview: loadOverview, activity: loadActivity, jobs: loadJobs, files: loadFiles, git: loadGit, performance: loadPerformance, settings: loadSettings, devlog: loadDevelopmentLog };
+  const loaders = { overview: loadOverview, activity: loadActivity, jobs: loadJobs, files: loadFiles, git: loadGit, performance: loadPerformance, settings: loadSettings, devlog: loadDevelopmentLog, tunnel: loadTunnel };
   loading = true;
   Promise.resolve(loaders[currentPage]()).catch(e => toast(e.message, true)).finally(() => {
     loading = false;
@@ -185,6 +185,85 @@ async function loadDevelopmentLog() {
 }
 byId('devlog-query').addEventListener('input',renderDevelopmentLog);
 byId('devlog-filter').addEventListener('change',renderDevelopmentLog);
+
+// Cloudflare connector UI. Tokens are sent only to the authenticated Admin
+// API; clear fields immediately after each attempt and never render secrets.
+let tunnelLast=null;
+function tunnelModeName(x){return ({quick:'临时 Quick Tunnel',named:'固定域名 Tunnel',off:'未连接'})[x]||'未知';}
+function renderTunnel(s) {
+  tunnelLast=s;
+  setText('tunnel-mode',tunnelModeName(s.mode));
+  setText('tunnel-binary',s.installed?'已安装':'未安装');
+  setText('tunnel-pid',s.pid?String(s.pid):'—');
+  setText('tunnel-autostart',s.autostart?'固定域名已启用':'关闭');
+  setText('tunnel-status-pill',s.running?'运行中':'未连接');
+  setText('tunnel-public-url',s.mcp_url||'尚未连接');
+  setText('tunnel-issuer-note',s.url?'当前 OAuth Issuer: '+s.issuer:'启用后自动同步 OAuth Issuer / HTTP Origin；使用旧地址的客户端需要重新授权。');
+  byId('tunnel-error').hidden=!s.last_error;
+  setText('tunnel-error',s.last_error||'');
+  byId('tunnel-stop').disabled=!s.running;
+  byId('tunnel-resume').disabled=!s.configured||s.running;
+  byId('tunnel-remove').disabled=!s.configured;
+  byId('tunnel-quick').disabled=!s.installed||s.running||s.configured;
+  byId('tunnel-provision-form').querySelector('button').disabled=!s.installed||s.configured||s.running;
+  byId('tunnel-existing-form').querySelector('button').disabled=!s.installed||s.configured||s.running;
+  if(!s.installed)setText('tunnel-diagnostics','缺少 cloudflared，请在 VPS SSH 中执行上方可选安装命令。');
+  else if(s.diagnostic_lines?.length)setText('tunnel-diagnostics',s.diagnostic_lines.join('\n'));
+}
+async function loadTunnel(){renderTunnel(await api('tunnel'));}
+function tunnelPassword(){
+  const password=byId('tunnel-password').value;
+  if(!password)throw Error('请输入管理员密码以确认 Tunnel 操作');
+  return password;
+}
+async function tunnelAction(action,data={}){
+  const password=tunnelPassword();
+  try {
+    const result=await api('tunnel/'+action,{method:'POST',data:{...data,password}});
+    renderTunnel(result);
+    toast('Cloudflare Tunnel 操作已提交');
+  }finally{
+    byId('tunnel-password').value='';
+    byId('tunnel-api-token').value='';
+    byId('tunnel-existing-token').value='';
+  }
+}
+byId('tunnel-refresh').addEventListener('click',()=>loadTunnel().catch(e=>toast(e.message,true)));
+byId('tunnel-copy-url').addEventListener('click',async()=>{
+  if(!tunnelLast?.mcp_url)return toast('暂无公网 MCP 地址',true);
+  try{await navigator.clipboard.writeText(tunnelLast.mcp_url);toast('已复制 MCP 地址');}catch{toast('复制失败，请手动选择文本',true);}
+});
+byId('tunnel-copy-install').addEventListener('click',async()=>{
+  try{await navigator.clipboard.writeText('curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh | sudo bash -s -- --install-cloudflared --yes');toast('已复制可选安装命令');}
+  catch{toast('复制失败',true);}
+});
+byId('tunnel-quick').addEventListener('click',()=>tunnelAction('quick').catch(e=>toast(e.message,true)));
+byId('tunnel-stop').addEventListener('click',()=>tunnelAction('stop').catch(e=>toast(e.message,true)));
+byId('tunnel-resume').addEventListener('click',()=>tunnelAction('resume').catch(e=>toast(e.message,true)));
+byId('tunnel-remove').addEventListener('click',()=>{
+  if(!confirm('确定移除本地 Tunnel 配置和令牌？不会自动删除 Cloudflare 账户里的 Tunnel/DNS 记录。'))return;
+  tunnelAction('remove').catch(e=>toast(e.message,true));
+});
+byId('tunnel-diagnose').addEventListener('click',async()=>{
+  setText('tunnel-diagnostics','正在检查本机 /health 与公网 /health…');
+  try{
+    const data=await api('tunnel/diagnose');
+    renderTunnel(data);
+    setText('tunnel-diagnostics','本机: '+(data.origin.ok?'健康':'不可达')+' (HTTP '+(data.origin.status||'—')+') · 公网: '+(data.public.ok?'健康':'尚未就绪')+' (HTTP '+(data.public.status||'—')+') · '+(data.ready?'端到端就绪':'请检查域名、DNS、cloudflared 7844 TCP/UDP 出站和 OAuth。'));
+  }catch(e){setText('tunnel-diagnostics','检查失败: '+e.message);toast(e.message,true);}
+});
+byId('tunnel-provision-form').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const data={name:byId('tunnel-name').value,hostname:byId('tunnel-hostname').value,
+    accountId:byId('tunnel-account-id').value,zoneId:byId('tunnel-zone-id').value,
+    apiToken:byId('tunnel-api-token').value};
+  try{await tunnelAction('provision',data);}catch(e){toast(e.message,true);}
+});
+byId('tunnel-existing-form').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const data={hostname:byId('tunnel-existing-host').value,tunnelToken:byId('tunnel-existing-token').value};
+  try{await tunnelAction('named',data);}catch(e){toast(e.message,true);}
+});
 
 byId('activity-reload').addEventListener('click', () => loadActivity().catch(e => toast(e.message,true)));
 byId('activity-query').addEventListener('input', renderActivity);

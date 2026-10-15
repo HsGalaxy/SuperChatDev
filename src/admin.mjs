@@ -353,6 +353,37 @@ export class AdminConsole {
 
     if (req.method === 'GET' && p === '/admin/api/overview') { json(res, 200, await this.overview()); return true; }
     if (req.method === 'GET' && p === '/admin/api/development-log') { json(res, 200, await readDevelopmentLog()); return true; }
+    if (p === '/admin/api/tunnel' && req.method === 'GET') {
+      json(res, 200, await this.tunnels.status()); return true;
+    }
+    if (p === '/admin/api/tunnel/diagnose' && req.method === 'GET') {
+      json(res, 200, await this.tunnels.statusCheck()); return true;
+    }
+    const tunnelAction = /^\/admin\/api\/tunnel\/(quick|named|provision|stop|resume|remove)$/.exec(p);
+    if (tunnelAction && req.method === 'POST') {
+      const body=JSON.parse(await readBody(req,8192));
+      if (!body || typeof body !== 'object' || Array.isArray(body) ||
+          !equal(body.password,this.password)) {
+        json(res,403,{error:'Administrator password confirmation required'});return true;
+      }
+      if (this.tunnelBusy) { json(res,409,{error:'Another tunnel management operation is still running'});return true; }
+      this.tunnelBusy=true;
+      try {
+      const action=tunnelAction[1];
+      const result=action==='quick'?await this.tunnels.quick():
+        action==='named'?await this.tunnels.saveNamed({
+          hostname:body.hostname,token:body.tunnelToken}):
+        action==='provision'?await this.tunnels.createRemote({
+          accountId:body.accountId,zoneId:body.zoneId,apiToken:body.apiToken,
+          hostname:body.hostname,name:body.name}):
+        action==='stop'?await this.tunnels.stop():
+        action==='resume'?await this.tunnels.resume():
+        await this.tunnels.remove();
+      await this.audit('tunnel.'+action);
+      json(res,200,result);
+      return true;
+      } finally {this.tunnelBusy=false;}
+    }
     if (req.method === 'GET' && p === '/admin/api/activity') {
       json(res, 200, await this.activity(requireInteger(Number(url.searchParams.get('offset') || 0), 0, 0, 20000, 'offset'),
         requireInteger(Number(url.searchParams.get('limit') || 50), 50, 1, 100, 'limit'))); return true;

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.11 — Optional Cloudflare Tunnel public connectivity
+
+- Add an independently managed Cloudflare Tunnel Admin page, separate from the existing 17 MCP development tools, with Quick Tunnel and long-lived named-tunnel workflows, start/stop/resume/remove, health diagnostics and links to Cloudflare documentation.
+- Quick Tunnel discovers a temporary trycloudflare.com address and automatically updates the effective OAuth issuer and allowed HTTP origin. For an explicitly selected fresh Cloudflare install, automatic Quick bootstrap can obtain the first public address and show it in the installer. Testing only: no SLA, 200 concurrent in-flight request limit, no SSE.
+- For named tunnels, support both a preconfigured dashboard token and API-token-assisted automatic provisioning: create remotely-managed tunnel, set catch-all-protected ingress for local MCP HTTP, create a proxied DNS CNAME without overwriting existing records. Provisioning API credentials stay in-memory; only the per-tunnel run token is persisted in a 0600 file and passed via token-file option.
+- Persist named-tunnel configuration for supervised restart with the gateway; dynamically update the public OAuth issuer. Sensitive lifecycle operations require authenticated Admin session, CSRF token and repeat password entry; no root access from Admin.
+- Install wizard recommends custom domain first, Cloudflare Tunnel second, automatic sslip.io third. Cloudflared is NOT a runtime dependency and is installed only by explicit Cloudflare opt-in or a separate install-cloudflared command using Cloudflare's signed APT repository. No automatic installation during ordinary upgrades.
+- Add offline mocked Cloudflare API, fake cloudflared-process, secret isolation, end-to-end issuer, installer and restart regression coverage. No changes to MCP Core tool schemas; a normal runtime upgrade is sufficient.
+
 ## 0.3.10 — Standalone Development Log page
 
 - Add a dedicated **Admin → 开发日志 / Development Log** page, separate from runtime logs, MCP invocation audits and performance traces.

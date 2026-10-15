@@ -27,22 +27,13 @@ curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.
 
 You don't need to clone the repository. The installer downloads the public source, verifies the release manifest, and guides you through installation/upgrade, DNS domain, HTTPS via managed Caddy or an existing reverse proxy, optional Desktop Commander, low-privilege service accounts, credentials, and health checks.
 
-### Smart domain suggestions
+### Public connectivity (recommended order)
 
-During a fresh interactive install, SuperChatDev attempts to detect the server's **public IPv4** over HTTPS and offers:
+1. **Custom HTTPS domain (preferred)** — Stable address using managed Caddy or an existing HTTPS proxy.
+2. **Cloudflare Tunnel (second choice)** — No public IP or inbound ports required. Quick Tunnels are for temporary testing; named tunnels support Cloudflare API-powered creation, ingress and DNS configuration. cloudflared is installed **only on explicit opt-in**.
+3. **Auto-generated sslip.io hostname** — Requires a reachable public IP, inbound 80/443 and working HTTPS.
 
-```text
-Choose your MCP domain:
-  1. Enter my own domain
-  2. Use suggested sslip.io domain: 1.2.3.4.sslip.io
-Choose [2]:
-```
-
-If a public IPv4 is detected, **option 2 is the suggested default**; just press Enter. Otherwise, the wizard falls back to manual domain input. `1.2.3.4` above is an example, not a hardcoded address. The final install confirmation is now **`[Y/n]`**: Enter proceeds, `n` cancels.
-
-> `sslip.io` is an external wildcard DNS service, not a guarantee of public reachability. The detected address may be an outbound NAT gateway. Your VPS must still receive inbound connections on ports 80/443 for managed Caddy HTTPS certificates. Auto-detection runs only during interactive fresh installs without a supplied `--domain`; scripted installs and Dry Run skip it.
-
-> **Security:** This executes publicly downloaded source as root. Review the script and trust the repository before running it. A real HTTPS hostname, usable DNS and access to GitHub are needed. Installation alone does not register the MCP app inside ChatGPT.
+See the [Cloudflare Tunnel guide](docs/CLOUDFLARE.md) for setup, optional installation, named tokens, endpoint/OAuth synchronization, access control and diagnostics. The Admin console has a dedicated Cloudflare Tunnel page; it does not add MCP tools.
 
 ### Review before running
 
@@ -123,7 +114,7 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 
 **Limitations:** Single trusted owner only, not a multi-tenant sandbox. MCP cannot disable ChatGPT's own approval dialogs or force OAuth refresh support in every client. Jobs may survive HTTP gateway restarts, but a host reboot does not automatically resume running commands.
 
-**License:** [MIT](LICENSE) · **Current runtime:** v0.3.10
+**License:** [MIT](LICENSE) · **Current runtime:** v0.3.11
 
 ## Changelog
 

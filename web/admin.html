@@ -16,6 +16,7 @@
 <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 20 6v5c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V6z"/><path d="m9 12 2 2 4-4"/></symbol>
 <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 17v3h16v-3"/></symbol>
 <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></symbol>
+<symbol id="i-cloud" viewBox="0 0 24 24"><path d="M6 19a4 4 0 0 1-1-7.87A7 7 0 0 1 18.5 10a4.5 4.5 0 0 1 .5 9z"/></symbol>
 <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5C4 4.7 4.7 4 5.5 4H20v15H5.5A2.5 2.5 0 0 1 3 16.5V6.5A2.5 2.5 0 0 1 5.5 4"/><path d="M4 16.5A2.5 2.5 0 0 1 6.5 14H20M8 8h8M8 11h5"/></symbol>
 <symbol id="i-logout" viewBox="0 0 24 24"><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5m5-4 4-4-4-4m4 4H9"/></symbol>
 </svg>
@@ -40,6 +41,7 @@
 <button class="nav-link" data-nav="jobs"><svg class="icon"><use href="#i-terminal"></use></svg> 任务与批处理 <span class="nav-chevron">›</span></button>
 <button class="nav-link" data-nav="files"><svg class="icon"><use href="#i-folder"></use></svg> 文件管理 <span class="nav-chevron">›</span></button>
 <button class="nav-link" data-nav="git"><svg class="icon"><use href="#i-git"></use></svg> Git / GitHub <span class="nav-chevron">›</span></button>
+<button class="nav-link" data-nav="tunnel"><svg class="icon"><use href="#i-cloud"></use></svg> Cloudflare Tunnel <span class="nav-chevron">›</span></button>
 <button class="nav-link" data-nav="performance"><svg class="icon"><use href="#i-chart"></use></svg> 性能调试 <span class="nav-chevron">›</span></button>
 <div class="nav-heading heading-gap">服务器</div>
 <button class="nav-link" data-nav="settings"><svg class="icon"><use href="#i-settings"></use></svg> 系统设置 <span class="nav-chevron">›</span></button>
@@ -141,6 +143,44 @@
 <div class="table-scroll"><table><thead><tr><th>时间</th><th>方法 / 工具</th><th>状态</th><th>总耗时</th><th>处理耗时</th><th>输入 / 输出</th><th>Trace</th><th>完整报文</th></tr></thead><tbody id="perf-rows"><tr><td colspan="8" class="empty-row">正在读取…</td></tr></tbody></table></div>
 <div class="perf-inspect"><div class="eyebrow">TRACE TIMELINE</div><pre id="perf-trace-detail">选择记录中的 Trace ID 查看阶段耗时。</pre></div>
 <div class="perf-inspect"><div class="eyebrow">SENSITIVE REQUEST / RESPONSE</div><pre id="perf-content-detail">选中“查看报文”，并输入管理员密码进行授权。完整内容不会出现在普通统计视图中。</pre></div></section>
+</div></section>
+<section class="page" id="page-tunnel">
+<div class="page-heading"><div><div class="eyebrow">CONNECTIVITY / PUBLIC ACCESS</div><h1>Cloudflare Tunnel<span class="heading-period">.</span></h1><p>无公网 IP 也能接入 ChatGPT。可选安装、不依赖 Desktop Commander，固定域名适合长期运行。</p></div>
+<button class="btn btn-outline" type="button" id="tunnel-refresh"><svg class="icon"><use href="#i-refresh"></use></svg> 刷新状态</button></div>
+<div class="tunnel-recommendation panel"><span class="soft-pill">接入推荐顺序</span><strong>① 自定义 HTTPS 域名</strong><strong>② Cloudflare Tunnel</strong><span>③ sslip.io 自动域名</span></div>
+<section class="panel tunnel-status-panel">
+<div class="panel-head"><div><div class="eyebrow">CONNECTION HEALTH</div><h3>当前 Tunnel 状态</h3></div><span id="tunnel-status-pill" class="soft-pill">正在查询…</span></div>
+<div class="tunnel-kpis"><div><small>模式</small><strong id="tunnel-mode">—</strong></div><div><small>cloudflared</small><strong id="tunnel-binary">—</strong></div><div><small>进程</small><strong id="tunnel-pid">—</strong></div><div><small>自动启动</small><strong id="tunnel-autostart">—</strong></div></div>
+<div class="tunnel-url-wrap"><label>当前公网 MCP 地址</label><div class="tunnel-url-line"><code id="tunnel-public-url">尚未连接</code><button class="btn btn-outline btn-compact" type="button" id="tunnel-copy-url">复制</button></div><small id="tunnel-issuer-note">连接后将同步公网 OAuth Issuer 地址。</small></div>
+<p id="tunnel-error" class="tunnel-error" hidden></p>
+<div class="tunnel-buttons"><button id="tunnel-diagnose" type="button" class="btn btn-outline btn-compact">检查内网 / 公网健康</button><button id="tunnel-stop" type="button" class="btn btn-outline btn-compact">停止</button><button id="tunnel-resume" type="button" class="btn btn-primary btn-compact">恢复固定隧道</button><button id="tunnel-remove" type="button" class="btn btn-outline btn-compact danger-button">删除本地配置</button></div>
+<div id="tunnel-diagnostics" class="tunnel-diagnostics">未进行诊断。检查将测试本机 /health 和当前公网 /health，不会发送凭据。</div>
+</section>
+<section class="panel tunnel-onboarding"><div class="panel-head"><div><div class="eyebrow">OPTIONAL INSTALLATION</div><h3>按需安装 cloudflared</h3><p class="setting-hint">SuperChatDev 不捆绑 cloudflared，也不会由普通 Web 请求提权安装。仅当你明确选择 Cloudflare 时运行此命令。</p></div></div>
+<div class="tunnel-install-command"><code id="tunnel-install-cmd">curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh | sudo bash -s -- --install-cloudflared --yes</code><button class="btn btn-outline btn-compact" id="tunnel-copy-install" type="button">复制命令</button></div>
+<p class="field-note">须在仓库目录中以 SSH 执行。使用 Cloudflare 官方签名 APT 源。也可以自行预装 cloudflared。</p></section>
+<div class="tunnel-setup-grid">
+<section class="panel settings-panel"><div class="panel-head"><div><div class="eyebrow">01 / TESTING</div><h3>Quick Tunnel — 一键临时地址</h3><p class="setting-hint">无需 Cloudflare 账号或域名，每次重启地址可能变化。仅用于试用：200 个并发请求限制，不支持 SSE。</p></div></div><button type="button" id="tunnel-quick" class="btn btn-primary">启动 Quick Tunnel</button>
+<p class="field-note">公开 URL 更新后，同步 MCP 地址、OAuth Issuer 与跨域来源。旧会话可能需要重新连接 ChatGPT。</p></section>
+<section class="panel settings-panel"><div class="panel-head"><div><div class="eyebrow">02 / PRODUCTION</div><h3>固定域名 — Cloudflare 自动配置</h3><p class="setting-hint">需要 Cloudflare 托管 DNS 的域名。提供一次性 API Token，即可自动创建 Tunnel、Ingress 路由与 DNS CNAME；仅保存 tunnel-scoped 运行令牌。</p></div></div>
+<form id="tunnel-provision-form" class="git-input-stack">
+<label class="git-field">Tunnel 名称<input id="tunnel-name" maxlength="50" placeholder="superchatdev-dev" required spellcheck="false"></label>
+<label class="git-field">公网主机名<input id="tunnel-hostname" maxlength="253" placeholder="mcp.example.org" required spellcheck="false"></label>
+<label class="git-field">Account ID<input id="tunnel-account-id" maxlength="32" required spellcheck="false" autocomplete="off"></label>
+<label class="git-field">Zone ID<input id="tunnel-zone-id" maxlength="32" required spellcheck="false" autocomplete="off"></label>
+<label class="git-field">Cloudflare API Token（仅使用一次）<input id="tunnel-api-token" type="password" autocomplete="new-password" required spellcheck="false"></label>
+<button type="submit" class="btn btn-primary">创建并启动固定隧道</button>
+</form></section>
+<section class="panel settings-panel"><div class="panel-head"><div><div class="eyebrow">03 / EXISTING TUNNEL</div><h3>接入已有 Cloudflare Tunnel</h3><p class="setting-hint">已在 Cloudflare 后台配置公网主机名及 Service URL？无需 API Token，只填写 Tunnel Token 和域名。</p></div></div>
+<form id="tunnel-existing-form" class="git-input-stack">
+<label class="git-field">公网主机名<input id="tunnel-existing-host" maxlength="253" placeholder="mcp.example.org" required spellcheck="false"></label>
+<label class="git-field">Tunnel Token（不会回显）<input id="tunnel-existing-token" type="password" required autocomplete="new-password" spellcheck="false"></label>
+<button type="submit" class="btn btn-outline">保存并启动</button>
+</form></section>
+<section class="panel settings-panel"><div class="panel-head"><div><div class="eyebrow">SECURITY / CONFIRMATION</div><h3>管理操作安全确认</h3><p class="setting-hint">每次启动、停止、配置或移除都需要管理员会话、CSRF 校验和再次输入管理员密码。</p></div></div>
+<label class="git-field">管理员密码<input id="tunnel-password" type="password" autocomplete="off" placeholder="执行操作时输入管理员密码"></label>
+<div class="notice-box"><strong>公开地址即公开入口</strong><p>访问权限仍由 SuperChatDev OAuth/管理员身份控制。建议固定域名配合 Cloudflare Access 或其他边缘访问策略；不要公开分享 Tunnel Token 或 API Token。</p></div>
+<div class="tunnel-help-links"><a href="https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel-api/" target="_blank" rel="noopener noreferrer">Cloudflare 官方 API 设置 ↗</a><a href="https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/" target="_blank" rel="noopener noreferrer">Quick Tunnel 限制 ↗</a></div></section>
 </div></section>
 <section class="page" id="page-devlog">
 <div class="page-heading"><div><div class="eyebrow">PROJECT HISTORY / RELEASE NOTES</div><h1>开发日志<span class="heading-period">.</span></h1><p>功能迭代、优化与修复记录。不同于 MCP 调用记录或服务器运行日志。</p></div>

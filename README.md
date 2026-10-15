@@ -29,22 +29,15 @@ curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.
 
 </details>
 
-### 智能域名推荐
+### 公网接入方式（推荐顺序）
 
-首次安装时，向导会先通过 HTTPS 尝试检测服务器的公网 IPv4，然后给出两个选项：
+1. **自定义 HTTPS 域名（首选）**：Caddy 自动签证书，或使用自己的现有 HTTPS 反向代理；固定地址，适合长期运行。
+2. **Cloudflare Tunnel（第二推荐）**：无需公网 IP、无须开放入站端口；Quick 用于临时测试，固定域名模式可通过管理后台配置 Cloudflare API 自动创建 Tunnel、路由和 DNS。只在主动启用时按需安装 cloudflared。
+3. **自动 sslip.io 域名**：无需注册域名，但需要入站公网 IP、开放 80/443 并配置 HTTPS。
 
-```text
-请选择 MCP 域名：
-  1. 手动输入域名（已有域名）
-  2. 自动推荐：1.2.3.4.sslip.io（无需注册域名）
-请选择 [2]：
-```
+**详细操作说明：** [Cloudflare Tunnel 连接指南](docs/zh-CN/CLOUDFLARE.md)。首次启用 Cloudflare 的完整流程、临时地址变化后 OAuth 重连、可选安装、故障排查均在该页面，不在 README 维护大段开发日志。
 
-能成功检测到公网 IPv4 时，**第二项是推荐默认值，回车即可选择**；检测失败时会自动退回手动输入。这里的 `1.2.3.4` 只是演示，安装时使用你服务器检测到的地址。最后确认改为 **`[Y/n]`**，回车即开始执行，输入 `n` 可取消。已有域名依旧可选择第一项。
-
-> `sslip.io` 是第三方公共 DNS 服务，省去注册域名与手动设置 A 记录的步骤，但不代表自动配置防火墙。检测到的 IP 可能是 NAT 出口，而不是可被公网访问的入站 IP。使用 Caddy 时仍需确认域名能解析到本机、端口 80/443 可达，才能正常签发 HTTPS 证书。自动 IP 检测只在首次安装且需要选择域名时触发；指定 `--domain` 或运行 Dry Run 不会触发。
-
-> **安全提示：** 一键命令会从公开 GitHub 仓库下载脚本并以 root 运行。请先确认仓库与脚本可信。希望先审查再执行，可以使用下方手动方式。正式部署需要真实 HTTPS 域名、DNS 和正常的 GitHub 网络连接；不能仅靠本机安装完成 ChatGPT 端的连接授权。
+> **安全提示：** 一键安装脚本以 root 运行，请先核对来源。Cloudflare Quick Tunnel 没有生产可用性保证，固定域名模式更适合长期接入；管理员权限和 OAuth 仍必须妥善保护。
 
 ### 想先检查脚本？
 
@@ -138,7 +131,7 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 
 **适用范围：** 单一受信任所有者；不是多租户执行沙箱。MCP 不能绕过 ChatGPT 网页端的平台级授权弹窗，也不能保证客户端一定支持 OAuth 自动刷新。Job 可在网关进程重启后恢复查询，但机器重启不会自动继续执行命令。
 
-**许可证：** [MIT](LICENSE) · **当前版本：** v0.3.10
+**许可证：** [MIT](LICENSE) · **当前版本：** v0.3.11
 
 ## 更新日志
 

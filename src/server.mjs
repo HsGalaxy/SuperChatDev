@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream/promises';
 import { clarifyProcessResult } from './process-status.mjs';
 import { validateExecutionEnv } from './environment.mjs';
+import {CloudflareTunnel} from './cloudflare-tunnel.mjs';
 import { Traces, tracePoint } from './trace.mjs';
 import { AdminConsole } from './admin.mjs';
 import { toolResult } from './common.mjs';
@@ -74,6 +75,20 @@ export async function createApp(config) {
   const upstreamNames = new Set(upstreamTools.map(tool => tool.name));
   const admin = new AdminConsole({ config: { ...config, workspace, dataRoot }, traces, files, jobs, workspaceBatches, oauth, tools, upstreamNames });
   await admin.init();
+  // Public issuer follows the active tunnel URL without changing persisted
+  // owner credentials or relying on public reverse-proxy settings.
+  const originalOrigins=[...(config.httpOrigins||[])];
+  const tunnels=new CloudflareTunnel({...config,workspace,dataRoot},{
+    publishBase(url) {
+      config.publicBaseURL=url||tunnels.originalBase;
+      config.httpOrigins=[...new Set([...originalOrigins,...(url?[url]:[])])];
+      oauth.base=config.publicBaseURL;
+      admin.config.publicBaseURL=config.publicBaseURL;
+    },
+    ...(config.tunnelOptions||{})
+  });
+  admin.tunnels=tunnels;
+  await tunnels.init();
   await traces.prune();
   if(upstream)upstream.onTools=items=>{
     items=items.filter(t=>!localNames.has(t.name));
@@ -83,7 +98,7 @@ export async function createApp(config) {
   };
   const catalog=()=>{
     const visible=admin.visibleTools();
-    return {version:'0.3.10',profile:admin.settings.toolProfile,
+    return {version:'0.3.11',profile:admin.settings.toolProfile,
       sha256:createHash('sha256').update(JSON.stringify(visible)).digest('hex'),
       visible_tools:visible.map(t=>t.name),registered_count:tools.length,visible_count:visible.length,
       upstream:upstream?.status() || {configured:false,connected:false},
@@ -100,7 +115,7 @@ export async function createApp(config) {
       tracePoint('dispatch.begin', {argument_fields:Object.keys(params.arguments||{}).length});
       return await dispatchTool(params);
     });
-    if (method === 'initialize') return { protocolVersion: versions.includes(params.protocolVersion) ? params.protocolVersion : '2025-03-26', capabilities, serverInfo: { name: 'chatgpt-dev-mcp', version: '0.3.10' }, instructions: serverInstructions };
+    if (method === 'initialize') return { protocolVersion: versions.includes(params.protocolVersion) ? params.protocolVersion : '2025-03-26', capabilities, serverInfo: { name: 'chatgpt-dev-mcp', version: '0.3.11' }, instructions: serverInstructions };
     if (method === 'ping') return {};
     if (method === 'tools/list') return { tools: admin.visibleTools(), _meta: {'starix/catalog_sha256':catalog().sha256} };
     if (method === 'resources/list') {
@@ -198,7 +213,7 @@ export async function createApp(config) {
       // transport's DNS-rebinding protection and other endpoints strict.
       const opaqueAuthorizationOrigin = req.headers.origin === 'null' && url.pathname === '/oauth/authorize' && ['GET', 'POST'].includes(req.method);
       if (req.headers.origin && !config.httpOrigins?.includes(req.headers.origin) && !opaqueAuthorizationOrigin) { json(res, 403, { error: 'Origin not allowed' }); return; }
-      if (url.pathname === '/health' && req.method === 'GET') { json(res, 200, { ok: true, version:'0.3.10' }); return; }
+      if (url.pathname === '/health' && req.method === 'GET') { json(res, 200, { ok: true, version:'0.3.11' }); return; }
       if (await admin.handle(req, res, url, readBody, json)) return;
       if (await oauth.handle(req, res, url, readBody, json)) return;
       if (url.pathname.startsWith('/artifacts/') && (req.method === 'GET' || req.method === 'HEAD')) {
@@ -267,8 +282,8 @@ export async function createApp(config) {
       else res.destroy();
     }
   });
-  server.on('close', () => upstream?.close());
-  return { server, files, jobs, oauth, tools, workspaceBatches, admin, catalog, code, quickExec, review, upstream };
+  server.on('close', () => {upstream?.close();tunnels.shutdown().catch(()=>{});});
+  return { server, files, jobs, oauth, tools, workspaceBatches, admin, catalog, code, quickExec, review, upstream, tunnels };
 }
 
 export function envConfig(env = process.env) {
@@ -293,6 +308,7 @@ export function envConfig(env = process.env) {
     password: env.MCP_OWNER_PASSWORD, adminPassword: env.MCP_ADMIN_PASSWORD, bearerToken: env.MCP_BEARER_TOKEN,
     clientRedirectOrigins: split(env.OAUTH_REDIRECT_ORIGINS),
     httpOrigins: [...split(env.HTTP_ALLOWED_ORIGINS), ...(publicBaseURL ? [publicBaseURL] : [])],
+    tunnelBootstrapQuick:env.TUNNEL_BOOTSTRAP_QUICK==='true',
     allowedOrigins: split(env.FILE_DOWNLOAD_ORIGINS),
     maxFileBytes: positive('MAX_FILE_BYTES', 512 * 1024 * 1024),
     maxResourceBytes: positive('MAX_RESOURCE_BYTES', 8 * 1024 * 1024),

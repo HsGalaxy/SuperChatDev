@@ -128,7 +128,7 @@ class SmartInstallerTests(unittest.TestCase):
         with patch('builtins.input', return_value='n'):
             self.assertFalse(m.confirm(m.tr('Proceed with privileged changes?'), True))
 
-    def test_end_to_end_interactive_selection_uses_suggested_domain(self):
+    def test_end_to_end_interactive_selection_uses_third_ranked_sslip_option(self):
         out = io.StringIO()
         captured = []
         stdin = Mock()
@@ -141,7 +141,7 @@ class SmartInstallerTests(unittest.TestCase):
               patch.object(m, 'verify_release', return_value=31),
               patch.object(m, 'detect_public_ipv4', return_value='1.2.3.4'),
               patch.object(m, 'fresh', side_effect=lambda args: captured.append(args)),
-              patch('builtins.input', side_effect=['', 'n', '']) as ask,
+              patch('builtins.input', side_effect=['3', 'n', '']) as ask,
               contextlib.redirect_stdout(out)):
             self.assertEqual(m.main(), 0)
         self.assertEqual(len(captured), 1)

@@ -26,3 +26,26 @@ def error_message(message):
         if (en.endswith(": ") or en.endswith(":") or en.endswith(" ")) and message.startswith(en):
             return zh + message[len(en):]
     return message
+
+
+# v0.3.11: optional public access choices, with custom HTTPS first.
+ZH.update({
+  "Choose public access method:": "请选择公网接入方式：",
+  "Custom HTTPS domain (recommended; Caddy or existing proxy)": "自定义 HTTPS 域名（首选，可用 Caddy 或现有反向代理）",
+  "Cloudflare Tunnel (no public IP or inbound ports; optional cloudflared)": "Cloudflare Tunnel（第二推荐，无需公网 IP 或开放入站端口）",
+  "Automatic sslip.io hostname (requires reachable public IP)": "自动 sslip.io 域名（需要可访问的公网 IP）",
+  "Install optional cloudflared now?": "是否现在单独安装可选的 cloudflared？",
+  "Cloudflare mode selected: see Admin → Cloudflare Tunnel for live address and OAuth status": "已选择 Cloudflare：请在管理后台 Cloudflare Tunnel 页面查看当前地址及 OAuth 状态。",
+  "cloudflared is already installed; skipping optional installation": "cloudflared 已安装，跳过可选安装",
+  "Installing optional cloudflared from signed official Cloudflare apt repository": "从 Cloudflare 官方签名 APT 仓库按需安装 cloudflared",
+  "DRY RUN: optional cloudflared package would be installed from signed Cloudflare apt repo": "模拟执行：按需安装 cloudflared（签名 Cloudflare APT 源），不修改系统",
+  "optional cloudflared:": "可选 cloudflared："
+})
+
+ZH.update({
+  "Cloudflare Tunnel needs outbound connectivity, not inbound 80/443. Use Admin to configure Quick or named Tunnel and verify the public OAuth issuer.": "Cloudflare Tunnel 只需出站连接，不必开放入站 80/443；请在管理后台配置 Quick 或固定域名 Tunnel，并验证公网 OAuth Issuer。"
+})
+
+ZH.update({
+  "Public Tunnel is not ready. Do not use the placeholder hostname. Check journalctl -u chatgpt-dev-mcp or SSH-forward 18787 to configure a named Tunnel.": "公网 Tunnel 尚未就绪，请勿使用占位域名。检查 journalctl -u chatgpt-dev-mcp，或通过 SSH 转发本机 18787 端口配置固定域名 Tunnel。"
+})

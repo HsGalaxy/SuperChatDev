@@ -1,13 +1,14 @@
 {
-  "version": "0.3.10",
+  "version": "0.3.11",
   "files": {
-    "CHANGELOG.md": "2e4bdbe9cb455da372be925df3a5a01a61b0422778b0eecbb0559c0bdfc2eede",
-    "README.md": "192ccb320efde2d4b1461905dea9ccde6720d86627a52467ba876d045332de1f",
-    "package.json": "4465b0895eeb70a5aa4c40898a92a01815962d557abcb2bab547362d7197e2eb",
+    "CHANGELOG.md": "a2c9a287c1bd2335cc79ac4db50c364cc35f2caa7d7de14acab4a56372ac8cc6",
+    "README.md": "1622f6d0b9994d0966e0edb1dfdb0eb548fc81e582b0c4fc32aceb502cb7ebb4",
+    "package.json": "3a1d55764ddafb73965408e2a93b7abbf61c53ee7ddd4dff03c3c7c166b64fc5",
     "src/admin-files.mjs": "e9abe9394d760e21df7e8b93e52602e6d41dad85802583896c1fdf095b0d88e2",
-    "src/admin.mjs": "dd82567a86e308fdd9193917226a7d1776fd619b0a1dec6f949ee5e466153dd0",
+    "src/admin.mjs": "b47cf1f3e688790c10bdc7e9e80519a3278feec4530099caf641523a13f4cdb3",
     "src/agent-patch.mjs": "fdee9fdc3db72a61e5806334bd96252ff43ff0512f68c45f2a7f77adff447325",
     "src/build-broker.py": "35e8a52dd15ffeebea3fcbc8421bd0e6f81c050069e5f322545bbd63254651b7",
+    "src/cloudflare-tunnel.mjs": "aeb586e9e0148487c1f093cb09922e8ca8bf097715242b49979661ebbe15767d",
     "src/code-tools.mjs": "5d34f4e484d29f05435e57e62761469656ef9002f1aee2416ab5af122169796c",
     "src/common.mjs": "d86afeec35d62f244db91c2e914ccf93c916308019544056d0ed66f51b63d230",
     "src/container-build.py": "58061234a6fdb71fa54ce00b7083bc1c6e831029c654508e3527ac617c6963ca",
@@ -35,15 +36,15 @@
     "src/ripgrep-search.mjs": "d7d703b922f78cfb9e9945105018e5ec0bef5f6dd2e0bbb4dab454346031acf9",
     "src/scoped-reader.mjs": "570c2a6a7a8e90b64ed6747e6b538f12fc0a8db45f000b12eff8001413676f65",
     "src/search-regex-worker.mjs": "563545d958d88d30d39e54984c60560636564640312f85ef871394b9814dc17c",
-    "src/server.mjs": "6051026703fcf030590b162febc7172b9b04b692d3b77959609f354ffa0c4cf8",
+    "src/server.mjs": "a7de1ad0fc69a099f9bcb7dd903740475d66ee742d3fb8cff71451b2478b30a7",
     "src/trace.mjs": "6f97724cb6b64d03526c81987c1095a39ff5596f8ff97a712d42b8f2c5541eef",
     "src/unpack.py": "98f24274fcd38b07a406fa8b80b11fe5010f6e81fd0f464cd95891f0942d0509",
     "src/upstream.mjs": "6f1ff48d5e9b8ad94b748a6b94be046c11429662cd417c3ca95975cc6c0cc0bb",
     "src/workspace-step.mjs": "532d49c92c3f1fa7e5c150e51d217ab1ea5dbfd3d5c1a47f81eb0f742d601502",
     "src/workspace-worker.mjs": "ab732a16338d8168d1d37c8073e5944342c998fcbeb0e097f92d4e8de4e7d0c7",
     "src/workspace.mjs": "58143ab9a8cd2b938e5d29b165e6eddf1355c61bc57717d85be8a2b6f1fda8ae",
-    "web/admin.css": "7d4f0a1498b9f5340afd252dd396b691546abdcb18e3bb8fe1a1bb6e5ba000eb",
-    "web/admin.html": "38a1c7ec01ff675aa19bbf76d4cb09b79d8f543e0c8486e5558f815f49a42b27",
-    "web/admin.js": "6e3c39418f34c95fad30c413faf0dc70d2f31f2591d79671a3c99aea55c9ba17"
+    "web/admin.css": "7bd26600f11fdd4e46b8191ca4ba12904367416addbc425615fdac01ae664e75",
+    "web/admin.html": "446772a90bc1a1be91875446b703e9218424ea6ca51b8514a8a33966f54a59be",
+    "web/admin.js": "5579830645b3a3ab1aa630fab92816e54988dc7b7ed05249134e6a1b5313951e"
   }
 }

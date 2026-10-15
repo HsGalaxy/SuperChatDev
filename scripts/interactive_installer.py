@@ -150,6 +150,55 @@ def detect_public_ipv4() -> str | None:
     return None
 
 
+def choose_access_method():
+    # Explicit recommendation order: existing domain, Cloudflare, sslip.io.
+    option=choose(tr("Choose public access method:"),[
+      ("1",tr("Custom HTTPS domain (recommended; Caddy or existing proxy)")),
+      ("2",tr("Cloudflare Tunnel (no public IP or inbound ports; optional cloudflared)")),
+      ("3",tr("Automatic sslip.io hostname (requires reachable public IP)"))
+    ],"1")
+    if option=="2":
+        return "pending.trycloudflare.com","cloudflare"
+    if option=="3":
+        ip=detect_public_ipv4()
+        if ip:
+            domain=f"{ip}.sslip.io"
+            print(tr("Selected MCP domain: {domain}",domain=domain))
+            return domain,"sslip"
+        print(tr("Public IPv4 detection was unavailable; enter a domain instead."))
+    # Manual custom HTTPS domain, with validation/error recovery.
+    while True:
+        value=input(tr("Public MCP domain (e.g. mcp.yourdomain.org): ")).strip()
+        try:return validate_domain(value),"custom"
+        except InstallError as error:
+            print(tr("Invalid domain, please try again: {reason}",reason=error_message(str(error))))
+
+
+def ensure_cloudflared():
+    # Called only by --install-cloudflared or an explicitly selected
+    # Cloudflare first-install option. Never a base prerequisite.
+    if shutil.which("cloudflared"):
+        step("cloudflared is already installed; skipping optional installation")
+        return
+    if not shutil.which("apt-get"):
+        raise InstallError("cloudflared optional install requires Debian/Ubuntu apt; install it manually on this OS")
+    step("Installing optional cloudflared from signed official Cloudflare apt repository")
+    import urllib.request
+    uri="https://pkg.cloudflare.com/cloudflare-main.gpg"
+    with urllib.request.urlopen(urllib.request.Request(uri,headers={"User-Agent":"SuperChatDev/installer"}),timeout=12) as response:
+        key=response.read(512*1024+1)
+    if len(key)>512*1024 or len(key)<128:
+        raise InstallError("Cloudflare apt signing key download invalid")
+    keyring=Path("/usr/share/keyrings/cloudflare-main.gpg")
+    keyring.parent.mkdir(mode=0o755,parents=True,exist_ok=True)
+    atomic_write(keyring,key,0o644)
+    repo=Path("/etc/apt/sources.list.d/cloudflared.list")
+    atomic_write(repo,b"deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main\n",0o644)
+    run("apt-get","update")
+    run("apt-get","install","-y","cloudflared")
+    if not shutil.which("cloudflared"):raise InstallError("cloudflared installed but is not on PATH")
+
+
 def choose_install_domain() -> str:
     print("\n" + tr("Detecting your server's public IPv4 address..."), flush=True)
     ip = detect_public_ipv4()
@@ -321,7 +370,7 @@ def create_credentials():
         atomic_write(target, secrets.token_urlsafe(40) + "\n")
     return (ETC / "owner-password").read_text().strip(), (ETC / "admin-password").read_text().strip()
 
-def env_settings(domain: str, port: int, runner, dc: bool, owner_pass: str, admin_pass: str):
+def env_settings(domain: str, port: int, runner, dc: bool, owner_pass: str, admin_pass: str, bootstrap_quick: bool = False):
     home = str(VAR / "runtime")
     cargo = str(VAR / "workspace" / ".rust-cargo")
     execution = {"PATH": cargo + "/bin:/usr/local/bin:/usr/bin:/bin", "HOME": home,
@@ -345,6 +394,8 @@ def env_settings(domain: str, port: int, runner, dc: bool, owner_pass: str, admi
         "EXECUTION_ENV": json.dumps(execution, separators=(",", ":")),
         "MCP_TOOL_PROFILE": "core",
     }
+    if bootstrap_quick:
+        values["TUNNEL_BOOTSTRAP_QUICK"] = "true"
     if dc:
         values["DESKTOP_COMMANDER_COMMAND"] = json.dumps([
             "node", str(APP / "upstream/node_modules/@wonderwhy-er/desktop-commander/dist/index.js")
@@ -599,6 +650,8 @@ def fresh(args):
     port=valid_port(args.port)
     port_available(port)
     ensure_prerequisites(args.auto_node)
+    if args.proxy=="cloudflare" and args.auto_cloudflared:
+        ensure_cloudflared()
     runner, owner = create_users_and_paths()
     backup=make_backup()
     backup_state(backup)
@@ -610,7 +663,7 @@ def fresh(args):
         if args.with_dc:
             install_dc()
         owner_pass, admin_pass=create_credentials()
-        atomic_write(ENV_FILE,render_env(env_settings(domain,port,runner,args.with_dc,owner_pass,admin_pass)))
+        atomic_write(ENV_FILE,render_env(env_settings(domain,port,runner,args.with_dc,owner_pass,admin_pass,bootstrap_quick=args.proxy=='cloudflare' and args.cloudflare_mode=='quick')))
         node=shutil.which("node") or ""
         node=str(Path(node).resolve())
         atomic_write(UNIT,unit_text(node),0o644)
@@ -618,6 +671,8 @@ def fresh(args):
         start_service(port); started=True
         if args.proxy=="caddy":
             install_caddy(domain,port,backup)
+        # Cloudflare Quick bootstraps asynchronously inside the gateway after startup;
+        # no cloudflared installation or background network command is implicit.
     except BaseException:
         step("Installation incomplete; restoring runtime and stopping newly created unit")
         # Credentials and the environment file were absent at entry; all
@@ -651,10 +706,33 @@ def fresh(args):
         print(tr("For troubleshooting, inspect"), backup)
         raise
     print("\n" + tr("SUCCESS: Core MCP {version}", version=VERSION))
-    print(tr("MCP endpoint:"), "https://"+domain+"/mcp")
-    print(tr("Admin console:"), "https://"+domain+"/admin/")
+    public_ready=args.proxy!="cloudflare"
+    if args.proxy=="cloudflare":
+        # Only advertise a real public address; never display the placeholder
+        # pending.trycloudflare.com as if it were a working service.
+        if args.cloudflare_mode=="quick":
+            quick=VAR/"state"/"cloudflare-tunnel"/"quick-url"
+            for _ in range(40):
+                if quick.is_file():
+                    try:
+                        addr=quick.read_text(encoding="ascii").strip()
+                        if re.fullmatch(r"https://[a-z0-9-]+\.trycloudflare\.com",addr):
+                            domain=addr.removeprefix("https://")
+                            public_ready=True
+                            break
+                    except (OSError,UnicodeError):pass
+                time.sleep(0.25)
+        print(tr("Cloudflare mode selected: see Admin → Cloudflare Tunnel for live address and OAuth status"))
+        if not public_ready:
+            print(tr("Public Tunnel is not ready. Do not use the placeholder hostname. Check journalctl -u chatgpt-dev-mcp or SSH-forward 18787 to configure a named Tunnel."))
+    if public_ready:
+        print(tr("MCP endpoint:"), "https://"+domain+"/mcp")
+        print(tr("Admin console:"), "https://"+domain+"/admin/")
     print(tr("HTTPS mode:"), args.proxy)
-    print(tr("Domain DNS must resolve here and ports 80/443 must be reachable for Caddy TLS."))
+    if args.proxy=="cloudflare":
+        print(tr("Cloudflare Tunnel needs outbound connectivity, not inbound 80/443. Use Admin to configure Quick or named Tunnel and verify the public OAuth issuer."))
+    else:
+        print(tr("Domain DNS must resolve here and ports 80/443 must be reachable for Caddy TLS."))
     print(tr("Owner and admin passwords are stored separately in root-only files under"), ETC)
     print(tr("To reveal a password locally, use a root SSH terminal; never paste secrets in chat."))
     print(tr("Private release backup:"), backup)
@@ -668,8 +746,16 @@ def main():
     parser.add_argument("--mode", choices=["fresh","upgrade","check"],
                         help="fresh 新装 / upgrade 升级 / check 检测")
     parser.add_argument("--domain",help="公网域名 / public DNS hostname, not a URL")
-    parser.add_argument("--proxy",choices=["caddy","external"],default=None,
+    parser.add_argument("--proxy",choices=["caddy","external","cloudflare"],default=None,
                         help="HTTPS: managed Caddy or your existing reverse proxy")
+    parser.add_argument("--access-method",choices=["custom","cloudflare","sslip"],default=None,
+                        help="接入方式 / custom preferred, Cloudflare second, sslip third")
+    parser.add_argument("--cloudflare-mode",choices=["quick","named"],default="quick",
+                        help="Cloudflare Quick testing or remotely-managed named tunnel")
+    parser.add_argument("--auto-cloudflared",action="store_true",
+                        help="Explicitly opt in to installing cloudflared only when using Cloudflare")
+    parser.add_argument("--install-cloudflared",action="store_true",
+                        help="Only install the optional cloudflared binary via signed Cloudflare apt repo")
     parser.add_argument("--port",type=int,default=18787,
                         help="本地端口 / loopback port")
     parser.add_argument("--with-dc",action="store_true",
@@ -695,6 +781,16 @@ def main():
             print("输入 1 或 2 / Enter 1 or 2")
         set_language("zh" if selected=="1" else "en")
 
+    if args.install_cloudflared:
+        if args.dry_run:
+            print(tr("DRY RUN: optional cloudflared package would be installed from signed Cloudflare apt repo"))
+            return 0
+        if os.geteuid()!=0:raise InstallError("Optional cloudflared installation requires root SSH")
+        if not args.yes and not sys.stdin.isatty():
+            raise InstallError("Explicit --yes is required for unattended cloudflared installation")
+        if not args.yes and not confirm(tr("Install optional cloudflared now?"),False):return 0
+        ensure_cloudflared()
+        return 0
     if args.mode=="check":
         verify_nonsecret_setup();return 0
     if args.mode is None and not args.dry_run:
@@ -713,13 +809,27 @@ def main():
     if args.mode is None: args.mode="fresh"
     if args.mode=="fresh":
         if not args.domain:
-            if args.dry_run:
+            if args.access_method=="cloudflare":
+                args.domain="pending.trycloudflare.com"
+            elif args.dry_run:
                 args.domain="mcp.my-domain.org"
+            elif args.access_method=="sslip":
+                ip=detect_public_ipv4()
+                if not ip:
+                    raise InstallError("Cannot select sslip.io: public IPv4 detection was unavailable")
+                args.domain=f"{ip}.sslip.io"
+            elif args.access_method=="custom" and sys.stdin.isatty():
+                args.domain=validate_domain(
+                    input(tr("Public MCP domain (e.g. mcp.yourdomain.org): ")).strip())
             elif sys.stdin.isatty():
-                args.domain=choose_install_domain()
+                args.domain,args.access_method=choose_access_method()
             else:
-                raise InstallError("--domain is required for non-interactive installation")
+                raise InstallError("--domain is required for non-interactive installation unless --access-method cloudflare")
         args.domain=validate_domain(args.domain)
+        if args.access_method=="cloudflare":
+            args.proxy="cloudflare"
+        elif args.proxy=="cloudflare":
+            raise InstallError("--proxy cloudflare requires --access-method cloudflare")
         valid_port(args.port)
         if not args.proxy:
             if args.dry_run or not sys.stdin.isatty(): args.proxy="external"
@@ -728,6 +838,8 @@ def main():
                     ("1",tr("Managed Caddy (automated ACME TLS, ports 80/443)")),
                     ("2",tr("Existing proxy (you will configure HTTPS separately)"))],"1")]
         if not args.dry_run and sys.stdin.isatty():
+            if args.proxy=="cloudflare" and not args.auto_cloudflared:
+                args.auto_cloudflared=confirm(tr("Install optional cloudflared now?"),False)
             if not args.with_dc:
                 args.with_dc=confirm(tr("Install optional Desktop Commander bridge?"), False)
             if node_version()<22 and not args.auto_node:
@@ -739,6 +851,7 @@ def main():
     print(tr("Action:"),args.mode,"|",tr("target:"),APP)
     if args.mode=="fresh":
         print(tr("Domain:"),args.domain,"|",tr("HTTPS proxy:"),args.proxy,
+              "|",tr("optional cloudflared:"),args.auto_cloudflared,
               "|",tr("backend port:"),args.port,"|",tr("optional DC:"),args.with_dc,
               "|",tr("permit NodeSource:"),args.auto_node)
         print(tr("Will create two unprivileged service accounts, protected credentials and persistent workspace."))

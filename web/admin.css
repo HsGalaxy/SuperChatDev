@@ -153,3 +153,32 @@ h1,h2,h3,p{margin:0}h1{letter-spacing:-1.4px}small{font-size:12px}a{color:inheri
 .devlog-footnote{padding:0 0 12px 29px;font-size:11px;line-height:1.8;color:#9aa6b6}
 @media(max-width:800px){.devlog-hero{padding:25px;flex-direction:column;align-items:stretch}.devlog-current{width:100%;min-width:0}.devlog-current strong{font-size:27px}.devlog-toolbar{flex-wrap:wrap}.devlog-toolbar .devlog-search{flex-basis:100%;max-width:none}.devlog-toolbar .table-count{display:inline;margin-left:auto}}
 @media(max-width:540px){.devlog-card{padding:18px}.devlog-hero h2{font-size:25px}.devlog-timeline{padding-left:24px}.devlog-timeline::before{left:8px}.devlog-point{left:-21px}.devlog-toolbar .select{width:148px}}
+
+/* Cloudflare Tunnel: deliberately separate from MCP tools and runtime logs. */
+.tunnel-recommendation{padding:17px 20px;display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:18px;font-size:12px;color:#748098}
+.tunnel-recommendation strong{font-weight:780;color:#3d4873}
+.tunnel-recommendation strong:nth-of-type(2){color:#6659ed}
+.tunnel-status-panel,.tunnel-onboarding{margin-bottom:19px;overflow:hidden}
+.tunnel-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:0 22px 20px}
+.tunnel-kpis>div{background:#f8faff;border:1px solid #e8ecf5;border-radius:10px;padding:16px 18px;min-width:0}
+.tunnel-kpis small{display:block;color:#8a96ac;font-size:10px;margin-bottom:9px}
+.tunnel-kpis strong{display:block;color:#273453;font-weight:800;font-size:14px;overflow-wrap:anywhere}
+.tunnel-url-wrap{margin:0 22px 17px;padding:17px 20px;border-radius:10px;background:#f5f4ff;border:1px solid #e8e5ff}
+.tunnel-url-wrap label{display:block;color:#8d87c6;font-weight:800;font-size:10px;letter-spacing:.6px}
+.tunnel-url-line{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0}
+.tunnel-url-line code{font-size:12px;color:#5c52d1;overflow-wrap:anywhere;word-break:break-all;min-width:0}
+.tunnel-url-wrap small{font-size:10px;color:#9d98c1;line-height:1.6;overflow-wrap:anywhere}
+.tunnel-error{border-left:3px solid #df767a;background:#fff2f2;color:#ad464d;font-size:11px;margin:0 22px 16px;padding:12px 14px;overflow-wrap:anywhere}
+.tunnel-buttons{display:flex;flex-wrap:wrap;gap:9px;padding:0 22px 17px}
+.tunnel-diagnostics{white-space:pre-wrap;line-height:1.8;font-size:11px;color:#8491a7;border-top:1px solid #edf0f7;padding:16px 22px;background:#fbfcff}
+.tunnel-onboarding .tunnel-install-command{padding:0 23px;display:flex;gap:16px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.tunnel-install-command code{min-width:0;font-size:12px;overflow-wrap:anywhere;color:#5049b8;background:#f3f1ff;border-radius:8px;padding:13px 16px}
+.tunnel-onboarding>.field-note{padding:5px 23px 22px}
+.tunnel-setup-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:19px;margin-bottom:30px}
+.tunnel-setup-grid .settings-panel{min-width:0;display:flex;flex-direction:column;gap:13px}
+.tunnel-setup-grid .settings-panel>button{align-self:flex-start}
+.tunnel-setup-grid .notice-box{margin-top:18px}
+.tunnel-help-links{display:flex;flex-wrap:wrap;gap:12px;margin-top:16px;font-size:11px}
+.tunnel-help-links a{color:#625bfa}
+@media(max-width:900px){.tunnel-setup-grid{grid-template-columns:1fr}.tunnel-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.tunnel-recommendation{gap:10px}}
+@media(max-width:580px){.tunnel-recommendation{flex-direction:column;align-items:flex-start}.tunnel-status-panel .panel-head{flex-wrap:wrap}.tunnel-kpis{gap:8px;margin:0 14px 16px}.tunnel-kpis>div{padding:12px}.tunnel-url-wrap{margin:0 14px 16px;padding:13px}.tunnel-buttons{padding-inline:14px}.tunnel-install-command code{font-size:10px}}
