@@ -159,9 +159,13 @@ export class AdminConsole {
     this.performance.configure(this.settings.performance);
   }
 
-  async save(input) {
+  async save(input,{allowSensitive=false}={}) {
     const settings = validateAdminSettings(input, this.names);
     const operation = this.saveQueue.then(async () => {
+      // The generic settings route must not bypass explicit password
+      // confirmation for enabling sensitive request/response capture.
+      if(settings.performance.captureContent && !this.settings.performance.captureContent && !allowSensitive)
+        throw new Error('Full MCP content capture requires fresh Admin password confirmation in Performance Diagnostics');
       const previousPolicy = this.settings.oauth;
       try { await this.oauth.setPolicy(settings.oauth); }
       catch (error) { await this.oauth.setPolicy(previousPolicy); throw error; }
@@ -421,10 +425,38 @@ export class AdminConsole {
         'Content-Length':body.length});
       res.end(body);return true;
     }
+    // Content logs can include API keys, Shell commands and files. Reading
+    // and exporting them require a fresh Admin password AND session + CSRF.
+    if (p === '/admin/api/performance/content/read' && req.method === 'POST') {
+      const data=JSON.parse(await readBody(req,4096));
+      if(!equal(data.password,this.password)){
+        json(res,403,{error:'Admin password confirmation failed'});return true;
+      }
+      const record=await this.performance.readContent(data.capture_id);
+      if(!record){json(res,404,{error:'Capture expired, not available or truncated from retention'});return true;}
+      json(res,200,record);return true;
+    }
+    if (p === '/admin/api/performance/content/download' && req.method === 'POST') {
+      const data=JSON.parse(await readBody(req,2048));
+      if(!equal(data.password,this.password)){
+        json(res,403,{error:'Admin password confirmation failed'});return true;
+      }
+      const body=await this.performance.downloadContent();
+      res.writeHead(200,{'Content-Type':'application/x-ndjson; charset=utf-8',
+        'Content-Disposition':'attachment; filename="mcp-content-sensitive.jsonl"',
+        'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff',
+        'X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'",
+        'Content-Length':body.length});
+      res.end(body);return true;
+    }
     if (p === '/admin/api/performance' && req.method === 'PUT') {
       const submitted=JSON.parse(await readBody(req,4096));
-      const verified=validatePerformance(submitted);
-      await this.save({...this.settings,performance:verified});
+      const {password,...input}=submitted;
+      const verified=validatePerformance(input);
+      if(verified.captureContent && !this.settings.performance.captureContent && !equal(password,this.password)){
+        json(res,403,{error:'Enabling full MCP payload capture requires the Admin password'});return true;
+      }
+      await this.save({...this.settings,performance:verified},{allowSensitive:verified.captureContent===true && equal(password,this.password)});
       json(res,200,{settings:{...this.settings.performance},saved:true});return true;
     }
     if (p === '/admin/api/performance/clear' && req.method === 'POST') {

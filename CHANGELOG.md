@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.6 — Sensitive full MCP payload capture (explicit opt-in)
+
+- Dedicated, authenticated **MCP JSON-RPC request + response capture**, separate from metadata-only performance logging. Stores the received request body and the exact serialized response on authenticated MCP calls only; no raw HTTP headers or Admin API requests.
+- Full capture is OFF by default, requires a second toggle and fresh Admin password confirmation. Viewing and downloading a capture also require authenticated Admin session, CSRF protection and password re-entry; the generic settings API cannot bypass this gate.
+- Independent `mcp-content.jsonl` rotation with configurable per-side body clipping (default 512 KiB, max 4 MiB) and separate journal limit (default 16 MiB/file, max 32 MiB); oversized records explicitly show truncation or omission. Queued capture bodies are bounded to 32 MiB with dropped-payload counters.
+- The default/disabled hot path no longer obtains a performance timestamp, installs debug listeners, copies JSON-RPC bodies or performs extra serialization. The existing metrics-only mode and Trace ID correlation are preserved.
+- Added security, large-message, rotation, disable/migration, live request/response and API-permission regression tests, and expanded the local benchmark to compare OFF, metrics-only and full capture.
+- No MCP tool schema changes; existing ChatGPT actions remain compatible.
+
 ## 0.3.5 — Opt-in MCP performance tracing and interactive terminal ergonomics
 
 - New **Admin → 性能调试 / Performance Diagnostics** toggle, bounded rotated JSONL downloads, P50/P95/P99 summary and per-call Trace timeline. Default OFF and never records request arguments, auth headers, commands, outputs or exception text.

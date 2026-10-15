@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { createReadStream } from 'node:fs';
 import { mkdir, realpath } from 'node:fs/promises';
@@ -36,7 +36,12 @@ export async function readBody(req, limit = 1024 * 1024) {
 
 export function json(res, status, value) {
   const encoded=JSON.stringify(value);
-  if(res._mcpPerf)res._mcpPerf.response_bytes=Buffer.byteLength(encoded);
+  if(res._mcpPerf){
+    res._mcpPerf.response_bytes=Buffer.byteLength(encoded);
+    // The response JSON was already serialized for the client. No second
+    // stringify, copy, or body retention unless sensitive capture is enabled.
+    if(res._mcpPerf.capture_id)res._mcpPerf.response_body=encoded;
+  }
   res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
   res.end(encoded);
 }
@@ -76,7 +81,7 @@ export async function createApp(config) {
   };
   const catalog=()=>{
     const visible=admin.visibleTools();
-    return {version:'0.3.5',profile:admin.settings.toolProfile,
+    return {version:'0.3.6',profile:admin.settings.toolProfile,
       sha256:createHash('sha256').update(JSON.stringify(visible)).digest('hex'),
       visible_tools:visible.map(t=>t.name),registered_count:tools.length,visible_count:visible.length,
       upstream:upstream?.status() || {configured:false,connected:false},
@@ -93,7 +98,7 @@ export async function createApp(config) {
       tracePoint('dispatch.begin', {argument_fields:Object.keys(params.arguments||{}).length});
       return await dispatchTool(params);
     });
-    if (method === 'initialize') return { protocolVersion: versions.includes(params.protocolVersion) ? params.protocolVersion : '2025-03-26', capabilities, serverInfo: { name: 'chatgpt-dev-mcp', version: '0.3.5' }, instructions: serverInstructions };
+    if (method === 'initialize') return { protocolVersion: versions.includes(params.protocolVersion) ? params.protocolVersion : '2025-03-26', capabilities, serverInfo: { name: 'chatgpt-dev-mcp', version: '0.3.6' }, instructions: serverInstructions };
     if (method === 'ping') return {};
     if (method === 'tools/list') return { tools: admin.visibleTools(), _meta: {'starix/catalog_sha256':catalog().sha256} };
     if (method === 'resources/list') {
@@ -164,21 +169,22 @@ export async function createApp(config) {
     }
 
   const server = http.createServer(async (req, res) => {
-    const requestStarted=performance.now();
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     try {
       const url = new URL(req.url, config.publicBaseURL || 'http://localhost');
-      if(url.pathname==='/mcp' && admin.performance.enabled()){
-        const meta={method:'unparsed',request_bytes:0,read_body_ms:0,parse_ms:0,
-          dispatch_ms:0,response_bytes:0};
+      // Disabled hot path: one boolean check, NO performance clock, listeners,
+      // body copies, JSON serialization, allocations, hashing or disk I/O.
+      if(admin.performance.enabled() && url.pathname==='/mcp'){
+        const meta={started:performance.now(),method:'unparsed',request_bytes:0,
+          read_body_ms:0,parse_ms:0,dispatch_ms:0,response_bytes:0};
         res._mcpPerf=meta;
         let recorded=false;
         const record=()=>{
           if(recorded)return;
           recorded=true;
           admin.performance.capture({...meta,status:res.statusCode,
-            duration_ms:performance.now()-requestStarted});
+            duration_ms:performance.now()-meta.started});
         };
         res.once('finish',record);
         res.once('close',()=>{if(!res.writableFinished)record();});
@@ -189,7 +195,7 @@ export async function createApp(config) {
       // transport's DNS-rebinding protection and other endpoints strict.
       const opaqueAuthorizationOrigin = req.headers.origin === 'null' && url.pathname === '/oauth/authorize' && ['GET', 'POST'].includes(req.method);
       if (req.headers.origin && !config.httpOrigins?.includes(req.headers.origin) && !opaqueAuthorizationOrigin) { json(res, 403, { error: 'Origin not allowed' }); return; }
-      if (url.pathname === '/health' && req.method === 'GET') { json(res, 200, { ok: true, version:'0.3.5' }); return; }
+      if (url.pathname === '/health' && req.method === 'GET') { json(res, 200, { ok: true, version:'0.3.6' }); return; }
       if (await admin.handle(req, res, url, readBody, json)) return;
       if (await oauth.handle(req, res, url, readBody, json)) return;
       if (url.pathname.startsWith('/artifacts/') && (req.method === 'GET' || req.method === 'HEAD')) {
@@ -206,6 +212,10 @@ export async function createApp(config) {
       if (!oauth.authorized(req)) { oauth.challenge(res); return; }
       // Stateless Streamable HTTP: JSON response to each POST; no unsolicited SSE.
       if (req.method !== 'POST') { res.writeHead(405, { Allow: 'POST' }); res.end(); return; }
+      // Only authenticated MCP POST requests are eligible for raw payload
+      // capture. HTTP auth/Cookie headers and Admin endpoints never qualify.
+      if(res._mcpPerf && admin.performance.contentEnabled())
+        res._mcpPerf.capture_id=randomUUID();
       if (!req.headers['content-type']?.includes('application/json')) { json(res, 415, { error: 'Expected application/json' }); return; }
       if (req.headers['mcp-protocol-version'] && !versions.includes(req.headers['mcp-protocol-version'])) { json(res, 400, { error: 'Unsupported MCP protocol version' }); return; }
       let message;
@@ -213,6 +223,7 @@ export async function createApp(config) {
         const readStarted=performance.now();
         const raw=await readBody(req);
         if(res._mcpPerf){
+          if(res._mcpPerf.capture_id)res._mcpPerf.request_body=raw;
           res._mcpPerf.read_body_ms=performance.now()-readStarted;
           res._mcpPerf.request_bytes=Buffer.byteLength(raw);
         }

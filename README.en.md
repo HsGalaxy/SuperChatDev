@@ -118,7 +118,7 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 
 **Limitations:** Single trusted owner only, not a multi-tenant sandbox. MCP cannot disable ChatGPT's own approval dialogs or force OAuth refresh support in every client. Jobs may survive HTTP gateway restarts, but a host reboot does not automatically resume running commands.
 
-**License:** [MIT](LICENSE) · **Current runtime:** v0.3.5
+**License:** [MIT](LICENSE) · **Current runtime:** v0.3.6
 
 ### Git / GitHub from Admin (v0.3.4)
 
@@ -130,3 +130,11 @@ Open `/admin/` → **Git / GitHub** to configure the real command runner's Git c
 The new Admin **Performance Diagnostics** page records MCP request timing only when explicitly enabled. Explore P50/P95/P99, read/parse/dispatch phases, tool milestones, request/response byte counts and bounded JSONL exports. Commands, arguments, terminal output, OAuth tokens, headers, URLs, addresses, and error messages are never logged. Two rotated files are kept with a configurable 1–32 MiB per-file cap.
 
 In Interactive/Legacy profiles, `job_input(wait_for_prompt=true)` can wait for common shell/Python/IPython prompts without resending input; `job_read(tail_lines=N)` returns the most recent log lines independently of the durable byte cursor. Prompt detection is heuristic. These optional arguments modify the ChatGPT tool schema; refresh/review/publish app actions after updating production.
+
+### v0.3.6: sensitive full MCP request/response capture (explicit opt-in)
+
+**Admin → Performance Diagnostics** now has two separate toggles, both OFF by default: metadata-only performance timings and, optionally, **full JSON-RPC request/response capture**. When full capture is enabled, incoming JSON-RPC request bodies and the exact serialized JSON-RPC responses (including tool arguments and outputs) are saved to separate private `mcp-content.jsonl` journals. The metadata timeline remains isolated in `mcp-performance.jsonl`; normal metrics queries never load sensitive message content.
+
+The Admin password must be re-entered to enable sensitive capture, inspect an individual capture, or download sensitive JSONL. Logs are bounded by a configurable per-message cap (default 512 KiB per side; max 4 MiB) and per-file rotation (default 16 MiB; max 32 MiB, current plus one older file). Oversized messages include explicit truncation markers. Queued sensitive body previews are bounded to 32 MiB; over-limit captures are dropped and reported in diagnostics. HTTP Authorization/Cookie headers and Admin requests are never captured, but **JSON-RPC arguments and tool results may contain passwords, tokens, code, signed URLs or personal information**. Enable briefly and clear afterward.
+
+With debugging OFF, the handler does not allocate capture state, invoke a performance clock, attach listeners, copy message bodies, perform extra serialization or write debug files. This release does **not** change the MCP tool schema.

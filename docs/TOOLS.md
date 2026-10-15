@@ -55,3 +55,11 @@ Repository access is not equivalent to write permission: install the public key 
 The Admin **Performance Diagnostics** panel enables an opt-in metadata-only performance log (off by default), including P50/P95/P99, HTTP body/parse/dispatch timings, tool-stage milestones, safe request/response sizes, bounded JSONL export and password-confirmed deletion. No arguments, commands, outputs, tokens, headers, URLs, addresses or exception messages enter those logs.
 
 `job_read(tail_lines=1..200)` includes an independent recent-lines view (`output_tail`) while preserving the byte cursor. `job_input(wait_for_prompt=true)` waits until a heuristic REPL prompt, completion or the requested `wait_ms` deadline. Heuristics may be wrong; always verify actual job status. Prompt input deduplication is retained. Optional MCP input fields changed, so refresh/review/publish ChatGPT actions after production upgrade.
+
+## v0.3.6: sensitive JSON-RPC payload capture
+
+Admin → **Performance Diagnostics** offers independent opt-in switches for metadata timing and **full MCP request/response capture** (both OFF by default). Authenticated MCP POST JSON-RPC request text and the actual serialized JSON-RPC response are retained in separate `mcp-content.jsonl` files, not in the normal timing journal. HTTP Authorization/Cookie headers and Admin requests are excluded; JSON-RPC bodies themselves may contain credentials or private content.
+
+Sensitive capture requires a fresh Admin password to enable, view or export and remains gated by Admin sessions and CSRF. Size-controlled head/tail truncation (default 512 KiB per request/response, configurable 16–4096 KiB) and two rotated journal files (default 16 MiB each, max 32 MiB) prevent unbounded retention. Clearing the debug logs removes both timing and sensitive payload journals. Disabling debug stops future capture but does not automatically erase old captures.
+
+OFF incurs only a lightweight settings check: no extra timers, listeners, body copying, JSON serialization or debug writes. No MCP tool schema change.

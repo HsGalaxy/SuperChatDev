@@ -102,11 +102,22 @@
 <div class="notice-box git-help"><strong>以后可以直接使用服务器 Git</strong><p>执行 git add、git commit、git push origin main；无需再让 GitHub MCP 逐个文件创建提交。私钥由命令执行用户持有，因此只让可信模型执行 Shell。</p></div>
 </section></div></section>
 <section class="page" id="page-performance">
-<div class="page-heading"><div><div class="eyebrow">OBSERVABILITY / MCP</div><h1>性能调试<span class="heading-period">.</span></h1><p>按需启用详细性能日志，分析请求延迟、调用阶段和交互瓶颈。默认关闭，不采集参数和正文。</p></div><span class="soft-pill" id="perf-enabled-status">DEBUG OFF</span></div>
+<div class="page-heading"><div><div class="eyebrow">OBSERVABILITY / MCP</div><h1>性能调试<span class="heading-period">.</span></h1><p>按需记录 MCP 性能指标，必要时可单独开启完整请求/响应抓包；所有调试默认关闭。</p></div><span class="soft-pill" id="perf-enabled-status">DEBUG OFF</span></div>
 <div class="perf-layout">
-<section class="panel settings-panel"><div class="panel-head"><div><div class="eyebrow">DIAGNOSTIC MODE</div><h3>性能日志策略</h3><p class="setting-hint">日志含工具名称、状态、各阶段耗时、输入输出字节数及 Trace ID，不保存命令、用户数据、密钥、输出正文或请求地址。</p></div></div>
+<section class="panel settings-panel"><div class="panel-head"><div><div class="eyebrow">DIAGNOSTIC MODE</div><h3>性能日志策略</h3><p class="setting-hint">普通性能日志仅包含元数据。完整报文抓包需另行开启，并可能含 API Key、Shell 命令和文件正文。</p></div></div>
 <form id="perf-form" class="perf-fields">
 <label class="perf-toggle"><input type="checkbox" id="perf-enabled"> <strong>启用详细性能调试</strong><span>仅记录新的 MCP 请求，不影响现有会话</span></label>
+<div class="perf-capture-settings">
+<label class="perf-toggle"><input type="checkbox" id="perf-capture-content"> <strong>同时记录完整 MCP 请求与返回（敏感）</strong><span>按原文保留 JSON-RPC 请求参数和工具返回内容；不采集 HTTP Authorization / Cookie，也不记录 Admin 请求。</span></label>
+<p class="field-note perf-security-warning"><strong>敏感数据提醒：</strong>完整报文可能包含 API Key、密码、命令、文件数据或签名 URL。请只在必要时短暂开启，并及时清理。查看、导出和首次开启均需再次输入管理员密码。</p>
+<div class="git-two-col">
+<label class="git-field">单侧正文上限（KiB）<input id="perf-max-body" type="number" min="16" max="4096" step="1" required value="512"></label>
+<label class="git-field">单份抓包日志上限（MiB）<input id="perf-max-content-file" type="number" min="1" max="32" step="1" required value="16"></label>
+</div>
+<label class="git-field">敏感抓包授权（管理员密码）<input id="perf-capture-password" type="password" autocomplete="off" placeholder="开启、查看或导出完整报文时输入"></label>
+<div class="git-action-row"><button type="button" class="btn btn-outline btn-compact" id="perf-download-content">导出完整请求/响应 JSONL</button></div>
+<div class="field-note">抓包正文独立存放于 0600 权限的滚动日志中；超出单条上限保留开头与结尾并明确标注截断。关闭抓包后不再捕获新报文，旧日志需手动清除。</div>
+</div>
 <div class="git-two-col">
 <label class="git-field">单个日志文件上限（MiB）<input id="perf-max-file" type="number" min="1" max="32" step="1" required value="8"></label>
 <label class="git-field">慢请求阈值（ms）<input id="perf-slow" type="number" min="0" max="60000" step="1" required value="250"></label></div>
@@ -120,12 +131,13 @@
 <div><small>P95</small><strong id="perf-p95">—</strong></div>
 <div><small>P99</small><strong id="perf-p99">—</strong></div></div>
 <p class="field-note" id="perf-loss">日志丢弃：—</p>
-<label class="git-field perf-clear-label">清除性能日志（需要管理员密码）<input id="perf-clear-password" type="password" autocomplete="off" placeholder="重新输入管理员密码"></label>
+<label class="git-field perf-clear-label">清除性能指标及完整抓包日志（需要管理员密码）<input id="perf-clear-password" type="password" autocomplete="off" placeholder="重新输入管理员密码"></label>
 <div class="git-action-row"><button class="btn btn-outline btn-compact danger-button" id="perf-clear" type="button">清除调试日志</button></div>
 </section>
 <section class="panel table-panel perf-table"><div class="panel-head"><div><div class="eyebrow">REQUEST EXPLORER</div><h3>最近 MCP 请求</h3></div><span class="panel-subtitle">点击 Trace ID 查看内部阶段</span></div>
-<div class="table-scroll"><table><thead><tr><th>时间</th><th>方法 / 工具</th><th>状态</th><th>总耗时</th><th>处理耗时</th><th>输入 / 输出</th><th>Trace</th></tr></thead><tbody id="perf-rows"><tr><td colspan="7" class="empty-row">正在读取…</td></tr></tbody></table></div>
-<div class="perf-inspect"><div class="eyebrow">TRACE TIMELINE</div><pre id="perf-trace-detail">选择记录中的 Trace ID 查看阶段耗时。</pre></div></section>
+<div class="table-scroll"><table><thead><tr><th>时间</th><th>方法 / 工具</th><th>状态</th><th>总耗时</th><th>处理耗时</th><th>输入 / 输出</th><th>Trace</th><th>完整报文</th></tr></thead><tbody id="perf-rows"><tr><td colspan="8" class="empty-row">正在读取…</td></tr></tbody></table></div>
+<div class="perf-inspect"><div class="eyebrow">TRACE TIMELINE</div><pre id="perf-trace-detail">选择记录中的 Trace ID 查看阶段耗时。</pre></div>
+<div class="perf-inspect"><div class="eyebrow">SENSITIVE REQUEST / RESPONSE</div><pre id="perf-content-detail">选中“查看报文”，并输入管理员密码进行授权。完整内容不会出现在普通统计视图中。</pre></div></section>
 </div></section>
 <section class="page" id="page-settings"><div class="page-heading"><div><div class="eyebrow">CONTROL PLANE / CONFIGURATION</div><h1>服务设置<span class="heading-period">.</span></h1><p>调整 MCP 权限、OAuth 认证、接入密钥与资源上限。</p></div><span class="soft-pill"><svg class="icon"><use href="#i-shield"></use></svg> SECURED</span></div>
 <form id="settings-form"><div class="settings-grid"><div class="settings-main">

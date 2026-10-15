@@ -109,3 +109,9 @@ h1,h2,h3,p{margin:0}h1{letter-spacing:-1.4px}small{font-size:12px}a{color:inheri
 .perf-inspect pre{font:11px/1.8 ui-monospace,Consolas,monospace;overflow:auto;max-height:310px;background:#0e1729;color:#d6def2;padding:16px;border-radius:10px;white-space:pre-wrap;word-break:break-all;margin:11px 0 0}
 @media(max-width:950px){.perf-layout{grid-template-columns:1fr}.perf-table{grid-column:auto}}
 @media(max-width:500px){.perf-stats{grid-template-columns:repeat(2,1fr)}}
+
+/* Sensitive MCP payload capture is a separate, deliberately explicit opt-in. */
+.perf-capture-settings{padding:17px;border-radius:11px;border:1px solid #dadee9;background:#fafbfe;display:flex;flex-direction:column;gap:15px}
+.perf-security-warning{line-height:1.85}
+.perf-security-warning strong{color:#8e4a38}
+#perf-content-detail{max-height:460px;white-space:pre-wrap;overflow-wrap:anywhere}

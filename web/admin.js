@@ -33,6 +33,7 @@ function toast(message, error = false) {
 }
 function showLogin() {
   clearIssuedBearer(); clearGitSecrets();
+  if(byId('perf-capture-password'))byId('perf-capture-password').value='';
   csrf = ''; byId('auth-screen').hidden = false; byId('shell').hidden = true;
   byId('login-password').value = ''; byId('login-error').textContent = '';
 }
@@ -65,7 +66,11 @@ function navigate(page) {
   if (!['overview','activity','jobs','files','git','performance','settings'].includes(page)) return;
   if (currentPage === 'settings' && page !== 'settings') clearIssuedBearer();
   if (currentPage === 'git' && page !== 'git') clearGitSecrets();
-  if (currentPage === 'performance' && page !== 'performance') byId('perf-clear-password').value='';
+  if (currentPage === 'performance' && page !== 'performance'){
+    byId('perf-clear-password').value='';
+    byId('perf-capture-password').value='';
+    setText('perf-content-detail','敏感报文已隐藏。');
+  }
   currentPage = page;
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + page));
   document.querySelectorAll('[data-nav]').forEach(el => el.classList.toggle('active', el.dataset.nav === page));
@@ -639,22 +644,27 @@ byId('git-bind-form').addEventListener('submit',async event=>{
 
 
 function metricMs(value){return typeof value==='number'&&Number.isFinite(value)?value.toFixed(1)+' ms':'—';}
-let performanceConfigured=false;
+let performanceConfigured=false, performancePersisted=null;
 async function loadPerformance() {
   const snapshot=await api('performance?limit=200');
   const p=snapshot.config||{};
+  performancePersisted=p;
   if(!performanceConfigured){
     byId('perf-enabled').checked=p.enabled===true;
+    byId('perf-capture-content').checked=p.captureContent===true;
     byId('perf-max-file').value=p.maxFileMB??8;
+    byId('perf-max-body').value=p.maxBodyKB??512;
+    byId('perf-max-content-file').value=p.maxContentFileMB??16;
     byId('perf-slow').value=p.slowMs??250;
     performanceConfigured=true;
   }
-  setText('perf-enabled-status',p.enabled?'DEBUG ON':'DEBUG OFF');
+  setText('perf-enabled-status',p.captureContent?'FULL CAPTURE':p.enabled?'DEBUG ON':'DEBUG OFF');
   setText('perf-samples',snapshot.sample_count??0);
   setText('perf-p50',metricMs(snapshot.p50_ms));
   setText('perf-p95',metricMs(snapshot.p95_ms));
   setText('perf-p99',metricMs(snapshot.p99_ms));
-  setText('perf-loss','缓冲丢弃：'+(snapshot.dropped||0)+
+  setText('perf-loss','指标缓冲丢弃：'+(snapshot.dropped||0)+
+    ' · 报文缓冲丢弃：'+(snapshot.content_dropped||0)+
     (snapshot.write_error?' · 写入错误：'+snapshot.write_error:'')+
     ' · 最多读取最近 '+(snapshot.sample_count||0)+' 条记录');
   const body=byId('perf-rows');
@@ -665,34 +675,51 @@ async function loadPerformance() {
     esc(metricMs(item.dispatch_ms))+'</td><td>'+esc(formatBytes(item.request_bytes))+
     ' / '+esc(formatBytes(item.response_bytes))+'</td><td>'+
     (item.trace_id ? '<button type="button" class="small-action" data-perf-trace="'+esc(item.trace_id)+'">'+shortId(item.trace_id)+'</button>' : '—')+
-    '</td></tr>').join(''):'<tr><td colspan="7" class="empty-row">暂无性能记录。可先启用 DEBUG 模式再进行 MCP 调用。</td></tr>';
+    '</td><td>'+ (item.capture_id ?
+      '<button type="button" class="small-action" data-perf-capture="'+esc(item.capture_id)+'">查看报文</button>' : '—')+
+    '</td></tr>').join(''):'<tr><td colspan="8" class="empty-row">暂无性能记录。可先启用 DEBUG 模式再进行 MCP 调用。</td></tr>';
 }
+byId('perf-enabled').addEventListener('change',()=>{
+  if(!byId('perf-enabled').checked)byId('perf-capture-content').checked=false;
+});
 byId('perf-form').addEventListener('submit',async event=>{
   event.preventDefault();
   const button=event.submitter||byId('perf-form').querySelector('button');
   button.disabled=true;
   try{
+    const enabled=byId('perf-enabled').checked;
+    const captureContent=byId('perf-capture-content').checked;
+    if(captureContent&&!enabled)throw new Error('请先开启性能调试，再启用完整报文抓包');
+    const priorCapture=performancePersisted?.captureContent===true;
+    const password=byId('perf-capture-password').value;
+    if(captureContent&&!priorCapture&&!password)
+      throw new Error('开启完整报文抓包需要输入管理员密码');
+    if(captureContent&&!priorCapture&&!confirm('完整 MCP 报文可能包含 API Key、私钥、文件内容或命令。确定要开启敏感抓包吗？'))return;
     const data=await api('performance',{method:'PUT',data:{
-      enabled:byId('perf-enabled').checked,
+      enabled,captureContent,password,
       maxFileMB:Number(byId('perf-max-file').value),
+      maxContentFileMB:Number(byId('perf-max-content-file').value),
+      maxBodyKB:Number(byId('perf-max-body').value),
       slowMs:Number(byId('perf-slow').value)
     }});
     performanceConfigured=false;
     if(settingsSaved)settingsSaved.performance=data.settings;
-    toast(data.settings.enabled?'性能调试已开启（仅采集元数据）':'性能调试已关闭');
+    toast(data.settings.captureContent?'已开启完整 MCP 请求/响应抓包（包含敏感数据）':
+      data.settings.enabled?'性能调试已开启（仅采集元数据）':'性能调试已关闭');
     await loadPerformance();
   }catch(error){toast(error.message,true);}
-  finally{button.disabled=false;}
+  finally{byId('perf-capture-password').value='';button.disabled=false;}
 });
 byId('perf-refresh').addEventListener('click',()=>loadPerformance().catch(e=>toast(e.message,true)));
 byId('perf-clear').addEventListener('click',async()=>{
   const password=byId('perf-clear-password').value;
   if(!password){toast('清除日志需填写管理员密码',true);return;}
-  if(!confirm('永久清除当前及上一份性能日志？此操作无法撤销。'))return;
+  if(!confirm('永久删除性能指标及完整报文抓包日志（包含当前和上一份）？此操作无法撤销。'))return;
   const button=byId('perf-clear');button.disabled=true;
   try{
     await api('performance/clear',{method:'POST',data:{password}});
-    toast('已清除性能日志');
+    toast('已清除性能指标及敏感抓包日志');
+    setText('perf-content-detail','抓包日志已清除。');
     await loadPerformance();
   }catch(error){toast(error.message,true);}
   finally{byId('perf-clear-password').value='';button.disabled=false;}
@@ -717,6 +744,56 @@ byId('perf-rows').addEventListener('click',async event=>{
       (timeline.join('\\n')||'本次请求没有详细阶段记录（可能发生在 DEBUG 开启之前）'));
   }catch(error){toast(error.message,true);}
   finally{button.disabled=false;}
+});
+
+
+function readableMcpBody(body){
+  if(!body?.present)return '（没有 JSON 响应正文，例如 HTTP 202，或请求在读取正文前被拒绝）';
+  return '原始长度：'+formatBytes(body.bytes)+
+    (body.truncated?' · 已截断'+(body.omitted_bytes?'（省略 '+formatBytes(body.omitted_bytes)+'）':''):' · 完整记录')+
+    (body.skipped?' · 未保存正文（'+body.skipped+'）':'')+'\n\n'+(body.text??'');
+}
+byId('perf-rows').addEventListener('click',async event=>{
+  const button=event.target.closest('[data-perf-capture]');
+  if(!button)return;
+  const password=byId('perf-capture-password').value;
+  if(!password){toast('查看原始报文需要输入管理员密码',true);return;}
+  button.disabled=true;
+  try{
+    const data=await api('performance/content/read',{method:'POST',data:{
+      capture_id:button.dataset.perfCapture,password
+    }});
+    setText('perf-content-detail','请求 / '+data.capture_id+'\n\n'+readableMcpBody(data.request)+
+      '\n\n========== 返回 ==========\n\n'+readableMcpBody(data.response));
+    toast('已读取完整 MCP 报文；此视图可能包含敏感数据');
+  }catch(error){toast(error.message,true);}
+  finally{byId('perf-capture-password').value='';button.disabled=false;}
+});
+byId('perf-download-content').addEventListener('click',async()=>{
+  const password=byId('perf-capture-password').value;
+  if(!password){toast('导出敏感抓包需要输入管理员密码',true);return;}
+  if(!confirm('即将下载可能包含密钥、密码和文件内容的完整 MCP 报文。请安全保存，不要公开分享。'))return;
+  const button=byId('perf-download-content');button.disabled=true;
+  try{
+    const response=await fetch('/admin/api/performance/content/download',{
+      method:'POST',credentials:'same-origin',cache:'no-store',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
+      body:JSON.stringify({password})
+    });
+    if(!response.ok){
+      const error=await response.json().catch(()=>({}));
+      if(response.status===401)showLogin();
+      throw new Error(error.error||'敏感抓包下载失败：HTTP '+response.status);
+    }
+    const url=URL.createObjectURL(await response.blob());
+    try{
+      const anchor=document.createElement('a');
+      anchor.href=url;anchor.download='mcp-content-sensitive.jsonl';
+      document.body.appendChild(anchor);anchor.click();anchor.remove();
+    }finally{setTimeout(()=>URL.revokeObjectURL(url),15000);}
+    toast('完整抓包已导出，请妥善保管');
+  }catch(error){toast(error.message,true);}
+  finally{byId('perf-capture-password').value='';button.disabled=false;}
 });
 
 setInterval(()=>{

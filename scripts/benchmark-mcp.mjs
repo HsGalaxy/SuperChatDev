@@ -1,4 +1,4 @@
-// Repeatable loopback-only MCP benchmark for comparing debug OFF vs ON.
+// Repeatable loopback-only MCP benchmark: OFF, metadata-only, full payload capture.
 // Never imports real credentials, touches production paths or changes services.
 // Run: node scripts/benchmark-mcp.mjs [requests] (default 200).
 import {mkdtemp,mkdir,rm} from 'node:fs/promises';
@@ -29,8 +29,9 @@ try{
    if(!response.ok||parsed.error)throw new Error('Benchmark request failed');
    return performance.now()-start;
  }
- async function sample(label,method,enabled){
-   app.admin.performance.configure({enabled,maxFileMB:4,slowMs:250});
+ async function sample(label,method,enabled,captureContent){
+   app.admin.performance.configure({enabled,captureContent,maxFileMB:4,
+     maxContentFileMB:4,maxBodyKB:512,slowMs:250});
    app.admin.traces.configureDebug(enabled);
    for(let i=0;i<15;i++)await call(method);
    const timings=[];
@@ -41,12 +42,13 @@ try{
    await app.admin.performance.flush();
    timings.sort((a,b)=>a-b);
    const pct=q=>Number(timings[Math.ceil(q*timings.length)-1].toFixed(3));
-   results.push({label,method,enabled,requests:parsed,p50_ms:pct(.50),
+   results.push({label,method,enabled,captureContent,requests:parsed,p50_ms:pct(.50),
      p95_ms:pct(.95),p99_ms:pct(.99)});
  }
  for(const method of ['ping','tools/call']){
-   await sample('baseline',method,false);
-   await sample('debug',method,true);
+   await sample('off',method,false,false);
+   await sample('metrics',method,true,false);
+   await sample('full-payload',method,true,true);
  }
  console.log(JSON.stringify({benchmark:'localhost-HTTP-8-concurrency',results},null,2));
 } finally{
