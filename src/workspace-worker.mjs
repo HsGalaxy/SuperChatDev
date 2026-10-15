@@ -123,7 +123,17 @@ try {
       try {
         const args = spec.type === 'exec' ? { argv: spec.argv, cwd: path.join(plan.cwd, spec.cwd), env: spec.env, timeout_seconds: spec.timeout_seconds }
           : { argv: [process.execPath, helper], cwd: '.', stdin: JSON.stringify({ workspace: jobs.workspace, cwd: plan.cwd, step: spec }), timeout_seconds: spec.type === 'http_check' ? spec.timeout_seconds + 5 : 60, job_kind: 'workspace_helper' };
-        if (['write','replace','mkdir','patch','copy','move'].includes(spec.type)) args.argv = ['/usr/bin/flock', '-x', path.join(jobs.executionHome || jobs.workspace, '.workspace-patch.lock'), process.execPath, spec.type==='patch'?patchWorker:helper];
+        if (['write','replace','mkdir','patch','copy','move','rename_directory'].includes(spec.type)) args.argv = ['/usr/bin/flock', '-x', path.join(jobs.executionHome || jobs.workspace, '.workspace-patch.lock'), process.execPath, spec.type==='patch'?patchWorker:helper];
+        if (spec.type === 'rename_directory') {
+          // The helper uses Linux renameat2(RENAME_NOREPLACE), with pinned
+          // parent descriptors and no fallback to clobbering rename().
+          args.argv = ['/usr/bin/flock','-x',path.join(jobs.executionHome || jobs.workspace,'.workspace-patch.lock'),
+            '/usr/bin/python3', fileURLToPath(new URL('./rename-directory-noreplace.py',import.meta.url))];
+          args.stdin = JSON.stringify({workspace:jobs.workspace,
+            source:path.posix.join(plan.cwd,spec.source),
+            destination:path.posix.join(plan.cwd,spec.destination),
+            expected_inode:spec.expected_inode});
+        }
         if (spec.type === 'container_build') {
           if (!config.containerBuildSocket) throw new Error('Rootless container builder is not configured');
           Object.assign(args, { argv: ['/usr/bin/python3', buildClient], stdin: JSON.stringify({ workspace: jobs.workspace, cwd: plan.cwd, step: spec, build_socket: config.containerBuildSocket }), timeout_seconds: spec.timeout_seconds + 60 });

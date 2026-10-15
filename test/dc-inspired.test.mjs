@@ -59,12 +59,14 @@ test('pathological user regex is aborted without wedging the event loop',async t
   assert.equal(answer.regex_timed_out,true);
   assert.ok(answer.skipped.some(item=>item.reason.includes('timed out')));
 });
-test('tail of a large UTF-8 file is bounded and does not invent a full hash',async t=>{
+test('large UTF-8 files support streaming ranges and bounded tails without inventing a full hash',async t=>{
   const c=await fixture(t);
   await writeFile(path.join(c.workspace,'huge.log'),'noise\n'.repeat(780000)+'final 中文\nlast error ✅\n');
   const tools=new CodeTools(c);
   const normal=await tools.read({files:[{path:'huge.log'}]});
-  assert.match(normal.files[0].error,/exceeds native text-read/);
+  assert.equal(normal.files[0].read_only_window,true);
+  assert.equal(normal.files[0].sha256,null);
+  assert.match(normal.files[0].numbered_text,/1: noise/);
   const tail=await tools.read({files:[{path:'huge.log',tail_lines:2}]});
   assert.equal(tail.files[0].sha256,null);
   assert.equal(tail.files[0].read_only_tail,true);

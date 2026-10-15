@@ -90,10 +90,44 @@ export class ScopedReader {
         bytes:stat.size,window_truncated:position>0&&lines.length<count};
     }finally{await fd.close();}
   }
+  // Memory-bounded positioning in very large UTF-8 logs. No whole-file hash:
+  // this is a read-only window, never an edit precondition.
+  async window(cwd, file, startLine, count, maxScanBytes = 512 * 1024 * 1024) {
+    const {fd,stat}=await this.handle(cwd,file);
+    try {
+      const decoder=new TextDecoder('utf-8',{fatal:true});
+      let position=0, line=1, buffer='', selected=[], scanned=0, done=false;
+      while(position<stat.size && line<startLine+count && scanned<maxScanBytes) {
+        const size=Math.min(65536,stat.size-position,maxScanBytes-scanned);
+        const chunk=Buffer.allocUnsafe(size);
+        const {bytesRead}=await fd.read(chunk,0,size,position);
+        if(!bytesRead)break;
+        position+=bytesRead;scanned+=bytesRead;
+        const piece=decoder.decode(chunk.subarray(0,bytesRead),{stream:true});
+        if(piece.includes('\0'))throw new Error('Binary file; use file_export instead');
+        buffer+=piece;
+        let at;
+        while((at=buffer.indexOf('\n'))!==-1) {
+          const value=buffer.slice(0,at);buffer=buffer.slice(at+1);
+          if(line>=startLine && selected.length<count)selected.push(value.replace(/\r$/,''));
+          line++;
+          if(selected.length>=count){done=true;break;}
+        }
+        if(done)break;
+        if(buffer.length>1024*1024)throw new Error('Line exceeds 1 MiB; narrow search or use an authorized command');
+      }
+      if(position===stat.size && buffer && selected.length<count && line>=startLine)selected.push(buffer.replace(/\r$/,''));
+      const after=await fd.stat();
+      if(stat.size!==after.size||stat.mtimeMs!==after.mtimeMs)throw new Error('File changed while reading window; retry');
+      return {lines:selected,bytes:stat.size,start_line:startLine,end_line:startLine+selected.length-1,sha256:null,
+        scanned_bytes:scanned,scan_limited:scanned>=maxScanBytes&&position<stat.size,
+        read_only_window:true,more:position<stat.size || buffer.length>0};
+    }finally{await fd.close();}
+  }
   async metadata(cwd, file, directory = false) {
     const {fd,stat}=await this.handle(cwd,file,directory);
     try {
-      return {size:stat.size,modified_at:stat.mtime.toISOString(),
+      return {size:stat.size,inode:stat.ino,modified_at:stat.mtime.toISOString(),
         permissions:'0'+(stat.mode&0o777).toString(8)};
     } finally { await fd.close(); }
   }

@@ -1,5 +1,5 @@
 // One policy table for discovery and execution. UI visibility is never authorization.
-export const PROFILES = ['core', 'interactive', 'legacy'];
+export const PROFILES = ['core', 'native-interactive', 'interactive', 'legacy'];
 export const INTERACTIVE_TOOLS = new Set(['start_process', 'read_process_output', 'interact_with_process', 'force_terminate', 'list_sessions']);
 const DC_READ = new Set(['read_file','read_multiple_files','list_directory','start_search','get_more_search_results','stop_search','list_searches','get_file_info','get_config','get_usage_stats','get_recent_tool_calls','list_processes','list_sessions','read_process_output']);
 const DC_WRITE = new Set(['write_file','write_pdf','edit_block','create_directory','move_file']);
@@ -26,8 +26,8 @@ export function toolRequirements(name, args = {}, upstream = false) {
   if (name === 'workspace_execute') {
     const result = new Set(['workspace']);
     for (const step of Array.isArray(args.steps) ? args.steps : []) {
-      if (['write','replace','mkdir','patch','copy','move'].includes(step.type)) result.add('filesystemWrite');
-      if (['copy','move'].includes(step.type)) result.add('filesystemRead');
+      if (['write','replace','mkdir','patch','copy','move','rename_directory'].includes(step.type)) result.add('filesystemWrite');
+      if (['copy','move','rename_directory'].includes(step.type)) result.add('filesystemRead');
       if (step.type === 'patch' || step.type === 'replace') result.add('filesystemRead');
       if (['exec','container_build'].includes(step.type)) {
         for (const permission of ['commandExecution','filesystemRead','filesystemWrite']) result.add(permission);
@@ -43,7 +43,7 @@ export function toolRequirements(name, args = {}, upstream = false) {
 export function denialReason(settings, name, args = {}, upstream = false) {
   if (settings.blockedTools.includes(name)) return 'disabled by the administrator';
   const profile = settings.toolProfile ?? 'core';
-  if (upstream && (profile === 'core' || (profile === 'interactive' && !INTERACTIVE_TOOLS.has(name)))) return 'not exposed by the selected tool profile';
+  if (upstream && (profile === 'core' || profile === 'native-interactive' || (profile === 'interactive' && !INTERACTIVE_TOOLS.has(name)))) return 'not exposed by the selected tool profile';
   if (!upstream && name === 'job_input' && profile === 'core') return 'job_input requires interactive or legacy tool profile';
   for (const requirement of toolRequirements(name, args, upstream)) {
     if (settings.permissions[requirement] === false) return 'disabled by the administrator (' + requirement + ')';

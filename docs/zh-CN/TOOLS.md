@@ -133,3 +133,8 @@ v0.3.7 当时的核心工具数量仍是 16 个；`workspace_execute` 新增向�
 示例：`{"cwd":"project","argv":["git","status","--short"],"timeout_ms":5000}`
 
 部署新版本后需要在 ChatGPT 应用管理刷新、审核并发布 MCP Tool Schema。
+
+## v0.3.9 大型项目模式
+
+fs_search(engine=ripgrep) 利用单独安装的 /usr/bin/rg，在 search_type=files 时按文件名查找，content 时搜索内容，遵守 .gitignore、隐藏敏感文件并返回结果是否完整。默认仍使用原生扫描。fs_read 对大文件支持起始行流式读取，但不提供全文件 SHA-256，不能作为编辑前置校验。native-interactive 提供原生 job_input/PTY（18 个工具）且不包含 DC；默认 Core 保持 17 个。
+\nDirectory rename: use workspace_execute step type rename_directory with source, destination and expected_inode from fs_list(details:true). Source and target must be inside workspace; no symlink/special files or overwrite; Linux renameat2 must be available. Refuses large subtrees (more than 10k items or 512 MiB). No automatic rollback.\n

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.9 - Large project tooling
+
+- Optional /usr/bin/rg backend in fs_search: filename search, .gitignore, bounded pagination and partial-result reporting, while preserving the native default.
+- Stream line ranges from large UTF-8 logs without whole-file hashes or unsafe memory growth.
+- Native-interactive profile exposes native PTY input with no Desktop Commander bridge. Core stays 17 tools, native-interactive has 18.
+- Add guarded directory rename with expected source inode, subtree validation and kernel-enforced no-clobber.
+- No additional Node runtime dependencies. OS ripgrep is optional; client actions require republishing.
+
 ## 0.3.8 — Low-latency one-shot developer exec
 
 - Add a distinct non-durable `exec` tool for short, preferably read-only commands. Direct child spawn bypasses worker startup, admission-lock overhead and disk-backed job records.

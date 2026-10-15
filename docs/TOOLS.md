@@ -92,3 +92,8 @@ Example: `{"argv":["git","status","--short"],"cwd":"project","timeout_ms":5000}`
 Failure exits have `status=failed`, not a gateway error. Timeouts have `status=timeout`, and very large output is stopped with `status=output_limit`. Execution retains existing commandExecution/jobs/filesystemRead/filesystemWrite permissions and the unprivileged runner identity. Two concurrent calls are allowed by default.
 
 **Unlike job_start, exec has no request_id, PTY, durable logs, Job ID or restart recovery.** A disconnected HTTP response is not proof of nonexecution. Prefer exec for repeatable inspections; use job_start with request_id or workspace_execute for writes, deployments, long-running processes and reliable retries. Refresh/review/publish the MCP app actions after upgrading.
+
+## v0.3.9 large-project workflow
+
+Use fs_search(engine=ripgrep) and search_type=files for filename search, or content for text. Install independent /usr/bin/rg first. Output is bounded, private files are filtered, links are not followed, and results may explicitly be incomplete. The default scanner stays native. Use fs_read for selected line ranges in large files; those windows provide no edit authorization hash. Profile native-interactive provides native job_input without DC (18 tools), default Core remains 17.
+\nDirectory rename: use workspace_execute step type rename_directory with source, destination and expected_inode from fs_list(details:true). Source and target must be inside workspace; no symlink/special files or overwrite; Linux renameat2 must be available. Refuses large subtrees (more than 10k items or 512 MiB). No automatic rollback.\n

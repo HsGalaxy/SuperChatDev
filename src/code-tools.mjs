@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { regexScanner } from './regex-search.mjs';
+import { ripgrepSearch } from './ripgrep-search.mjs';
 import { ScopedReader, digest, relativePath } from './scoped-reader.mjs';
 import { requireInteger } from './common.mjs';
 
@@ -55,7 +56,7 @@ function pathHint(cwd, requested, error) {
 const encodeCursor = data => Buffer.from(JSON.stringify(data)).toString('base64url');
 
 export class CodeTools {
-  constructor(config) { this.reader=new ScopedReader(config); }
+  constructor(config) { this.reader=new ScopedReader(config); this.rgPath=config.rgPath ?? '/usr/bin/rg'; this.rgIdentity={executionUid:config.executionUid,executionGid:config.executionGid}; }
   async list({cwd='.',path:directory='.',depth=1,limit=100,cursor:token,include_hidden=false,details=false}={}) {
     requireInteger(depth,1,1,4,'depth');requireInteger(limit,100,1,500,'limit');
     if(typeof include_hidden!=='boolean'||typeof details!=='boolean')throw new Error('include_hidden and details must be boolean');
@@ -97,6 +98,23 @@ export class CodeTools {
         let data;
         try{data=await this.reader.text(cwd,result.path);}
         catch(error){
+          if(tail===null && /exceeds native text-read limit/.test(error.message)) {
+            if(request.expected_sha256!==undefined)
+              throw new Error('Large-file range cannot validate full-file SHA-256; omit expected_sha256');
+            const win=await this.reader.window(cwd,result.path,start,count);
+            let output='',returned=0;
+            for(const line of win.lines){
+              const piece=(start+returned)+': '+line+'\n';
+              if(Buffer.byteLength(piece)>remaining)break;
+              output+=piece;remaining-=Buffer.byteLength(piece);returned++;
+            }
+            Object.assign(result,{...win,numbered_text:output,end_line:start+returned-1,
+              next_read:win.scan_limited?null:win.more||returned<win.lines.length?
+                {path:result.path,start_line:start+returned,line_count:count}:null,
+              truncated:win.scan_limited||win.more||returned<win.lines.length});
+            if(win.scan_limited)result.warning='512 MiB streaming scan budget reached; use a narrower file or authorized command, not the same cursor';
+            results.push(result);continue;
+          }
           if(tail===null || !/exceeds native text-read limit/.test(error.message))throw error;
           if(request.expected_sha256!==undefined)
             throw new Error('Large-file tail cannot verify a full-file SHA-256; omit expected_sha256');
@@ -143,14 +161,18 @@ export class CodeTools {
       results.push(result);
     }
     return {cwd:relativePath(cwd),files:results,output_bytes:max_bytes-remaining,
-      next_step:'Use next_read for continuation. tail_lines retrieves the file end; for large files only a 256 KiB window is read and full-file SHA-256 is unavailable. Use hashes from full reads as edit guards.'};
+      next_step:'Use next_read for continuation. Files over 4 MiB support streaming line windows and tail_lines; partial reads have no full-file SHA-256, and cannot authorize guarded edits.'};
   }
-  async search({cwd='.',path:directory='.',query,glob='',case_sensitive=true,regex=false,limit=40,cursor:token}={}) {
+  async search({cwd='.',path:directory='.',query,glob='',case_sensitive=true,regex=false,limit=40,cursor:token,engine='native',search_type='content'}={}) {
     if(typeof query!=='string'||!query.length||query.length>512||query.includes('\n'))
       throw new Error('query must be a nonempty single-line pattern, maximum 512 characters');
     if(typeof glob!=='string'||glob.length>256||typeof case_sensitive!=='boolean'||typeof regex!=='boolean')
       throw new Error('Invalid search filter');
     requireInteger(limit,40,1,200,'limit');
+    if (!['native','ripgrep'].includes(engine) || !['content','files'].includes(search_type))
+      throw new Error('Invalid search engine or type');
+    if(engine==='ripgrep')return ripgrepSearch(this.reader,{cwd,directory,query,glob,case_sensitive,regex,limit,cursor:token,search_type,rgPath:this.rgPath,...this.rgIdentity});
+    if(search_type!=='content')throw new Error('Filename search requires engine=ripgrep');
     const data=await this.reader.inventory(cwd,directory,32,false);
     const files=data.entries.filter(e=>e.type==='file'&&searchGlob(glob,e.path));
     const id=digest(JSON.stringify([cwd,directory,query,glob,case_sensitive,regex,files.map(e=>e.path)]));
@@ -202,5 +224,5 @@ export class CodeTools {
 export const codeTools=[
  {name:'fs_list',title:'List project files',description:'Bounded, sorted project tree without a shell. Skips dependency/build/secret paths and never follows symlinks. Reuse next_cursor; traversal_incomplete means narrow the directory.',inputSchema:obj({...base,path:string('Directory relative to cwd, default dot'),depth:integer(1,4),limit:integer(1,500),cursor:string('Previous next_cursor'),include_hidden:{type:'boolean'},details:{type:'boolean',description:'Include bounded file size, modification time and permissions; no symlink following.'}}),annotations:readonly},
  {name:'fs_read',title:'Read numbered code ranges',description:'Read up to 16 UTF-8 files; tail_lines supports large files (without full hash), normal reads return line numbers and SHA-256. Per-file errors, shared output budget, next_read for continuation. Do not send displayed line prefixes back as file content.',inputSchema:{...obj({...base,files:{type:'array',minItems:1,maxItems:16,items:{...obj({path:string('File relative to cwd'),start_line:integer(1,10000000),line_count:integer(1,500),tail_lines:integer(1,500),expected_sha256:string('Optional hash returned by the previous page')}),required:['path']}},max_bytes:integer(1024,131072)}),required:['files']},annotations:readonly},
- {name:'fs_search',title:'Search project code',description:'Search literal text (default) or opt-in bounded regex in UTF-8 project files, with line numbers and hashes. Optional basename glob such as *.mjs. Bounded scan, explicit next_cursor and skipped files; excludes secrets/dependencies.',inputSchema:{...obj({...base,path:string('Subdirectory relative to cwd'),query:string('Single-line literal text'),glob:string('Optional basename wildcard'),case_sensitive:{type:'boolean'},regex:{type:'boolean',description:'Opt-in bounded JavaScript regex; literal by default.'},limit:integer(1,200),cursor:string('Previous next_cursor')}),required:['query']},annotations:readonly}
+ {name:'fs_search',title:'Search project code',description:'Search code: native bounded scan by default; engine=ripgrep uses the installed /usr/bin/rg for large repositories, with file-name mode search_type=files, .gitignore support, no symlink traversal, explicit incomplete status and pagination. Fetch SHA-256 with fs_read before editing.',inputSchema:{...obj({...base,path:string('Subdirectory relative to cwd'),query:string('Single-line literal text'),glob:string('Optional basename wildcard'),case_sensitive:{type:'boolean'},regex:{type:'boolean',description:'Opt-in bounded JavaScript regex; literal by default.'},limit:integer(1,200),cursor:string('Previous next_cursor'),engine:{type:'string',enum:['native','ripgrep'],description:'ripgrep accelerates large repositories when /usr/bin/rg is installed; defaults to native scan'},search_type:{type:'string',enum:['content','files'],description:'Filename search requires engine=ripgrep'}}),required:['query']},annotations:readonly}
 ];

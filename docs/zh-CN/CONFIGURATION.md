@@ -15,7 +15,7 @@
 | `FILE_DOWNLOAD_ORIGINS` | 允许从原生附件获取文件的来源 |
 | `EXECUTION_UID`, `EXECUTION_GID`, `EXECUTION_HOME` | 低权限执行身份 |
 | `EXECUTION_ENV` | 运行命令的 PATH、Cargo/Rustup 等环境 |
-| `MCP_TOOL_PROFILE` | `core` / `interactive` / `legacy` |
+| `MCP_TOOL_PROFILE` | `core` / `native-interactive` / `interactive` / `legacy` |
 | `DESKTOP_COMMANDER_COMMAND` | 可选 DC 桥接命令 |
 | `MAX_JOBS`, `MAX_FILE_BYTES`, `MAX_RESOURCE_BYTES` | 并发与文件上限 |
 

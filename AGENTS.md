@@ -3,7 +3,7 @@
 This project is a **ChatGPT Web MCP development runtime**, NOT an all-in-one agent platform or general-purpose IDE.
 
 - Start with `README.md`, `docs/ARCHITECTURE.md`, and `docs/TOOLS.md`.
-- Prefer existing **16 Core tools**. Do not add overlapping file editors or an alternative generic `exec` tool without clear reasons.
+- Prefer existing **17 Core tools**. Do not add overlapping file editors or an alternative generic `exec` tool without clear reasons.
 - v0.3.8 adds a measured, non-durable `exec` path for brief repeatable command inspection; it is distinct from durable Jobs and must not be used for uncertain writes, side effects or recovery.
 
 - A single command uses `job_start` (default 500ms fast wait). A dependency-aware edit/test/build workflow uses `workspace_execute`. Never treat `running` as `succeeded`.

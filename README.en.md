@@ -119,7 +119,7 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 
 **Limitations:** Single trusted owner only, not a multi-tenant sandbox. MCP cannot disable ChatGPT's own approval dialogs or force OAuth refresh support in every client. Jobs may survive HTTP gateway restarts, but a host reboot does not automatically resume running commands.
 
-**License:** [MIT](LICENSE) · **Current runtime:** v0.3.8
+**License:** [MIT](LICENSE) · **Current runtime:** v0.3.9
 
 ### Git / GitHub from Admin (v0.3.4)
 
@@ -131,6 +131,14 @@ Open `/admin/` → **Git / GitHub** to configure the real command runner's Git c
 The new Admin **Performance Diagnostics** page records MCP request timing only when explicitly enabled. Explore P50/P95/P99, read/parse/dispatch phases, tool milestones, request/response byte counts and bounded JSONL exports. Commands, arguments, terminal output, OAuth tokens, headers, URLs, addresses, and error messages are never logged. Two rotated files are kept with a configurable 1–32 MiB per-file cap.
 
 In Interactive/Legacy profiles, `job_input(wait_for_prompt=true)` can wait for common shell/Python/IPython prompts without resending input; `job_read(tail_lines=N)` returns the most recent log lines independently of the durable byte cursor. Prompt detection is heuristic. These optional arguments modify the ChatGPT tool schema; refresh/review/publish app actions after updating production.
+
+### v0.3.9: Large project navigation
+
+- Optional /usr/bin/rg powers filename and content search in large repositories via fs_search(engine=ripgrep), including gitignore and bounded result pages. Native default remains available.
+- fs_read streams selected UTF-8 line windows from files larger than 4 MiB, without a full-file SHA-256.
+- Native-interactive enables job_input/PTY with 18 native tools and no DC dependency; Core remains 17.
+- workspace_execute supports guarded rename_directory with source inode from fs_list(details:true); atomic Linux no-replace, subtree link/special-file rejection.
+- Development branch only; republish tool definitions after deployment.
 
 ### v0.3.8: Low-latency one-shot Exec
 

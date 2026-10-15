@@ -17,11 +17,11 @@ export function developmentGuide({workspace,upstreamTools=[],executionEnv={},con
       'file_import/export/unpack paths are relative to workspace_root. ChatGPT /mnt/data is a different machine.'],
     workflow:[
       'Import the real user attachment; retain bytes + sha256. Unpack ZIP, then read AGENTS.md and README before commands.',
-      'fs_list(details:true) reports safe metadata; fs_search(regex:true) uses a bounded regex worker; fs_read.tail_lines supports large logs. Full reads provide SHA-256, large-file tail does not.',
+      'fs_search(engine:ripgrep) searches large repos when /usr/bin/rg exists; search_type:files finds names. Native bounded search stays default. fs_read streams ranges from large logs (no full hash), and tail_lines works for large logs.',
       'workspace_execute remains the ONE core write interface: write/replace/patch/mkdir, SHA-guarded copy/move, and dependent exec tests; failed matches include non-mutating suggestions.',
       'exec is a one-call, non-durable command for short/repeatable development queries. It has a 30-second timeout, bounded output and no saved Job ID; never replay uncertain writes.',
       'job_start defaults to wait_ms=500. Short work may return output+exit_code immediately; long work returns a durable job ID. request_id prevents duplicate execution.',
-      'When profile is interactive/legacy, job_start tty:true enables a real PTY, and job_input sends subsequent keystrokes. The default Core stays at 16 tools.',
+      'When profile is interactive/legacy, job_start tty:true enables a real PTY, and job_input sends subsequent keystrokes. The default Core stays at 17 tools. To use native PTY without Desktop Commander, select native-interactive profile and refresh ChatGPT actions.',
       'Completed long jobs expose bounded output_preview with first/last output, even after the usual log cap. Use next_offset and wait_ms when polling job_read/workspace_read. Inspect all step outcomes; a started server is not a passed health check.',
       'workspace_review returns read-only Git status/diffs. For projects without Git it reports the limitation rather than initializing silently.',
       'Export only the intended project/report with file_export and return its actual artifact/HTTPS URL.'

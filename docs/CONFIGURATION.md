@@ -13,7 +13,7 @@ Environment file is root-only `/etc/chatgpt-dev-mcp/service.env`. **Never put re
 | `FILE_DOWNLOAD_ORIGINS` | Allowed HTTPS attachment fetch origins |
 | `EXECUTION_UID`, `EXECUTION_GID`, `EXECUTION_HOME` | Low-privilege job identity |
 | `EXECUTION_ENV` | JSON map for clean job PATH, CARGO_HOME and RUSTUP_HOME |
-| `MCP_TOOL_PROFILE` | `core`, `interactive` or `legacy` |
+| `MCP_TOOL_PROFILE` | `core`, `native-interactive`, `interactive` or `legacy` |
 | `DESKTOP_COMMANDER_COMMAND` | Optional JSON argv for upstream DC |
 | `MAX_JOBS`, `MAX_FILE_BYTES`, `MAX_RESOURCE_BYTES` | Execution and file limits |
 
