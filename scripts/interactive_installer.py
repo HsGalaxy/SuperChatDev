@@ -45,6 +45,8 @@ RUNNER_SOCKET = VAR / "state" / "job-runner.sock"
 BACKUPS = Path("/var/backups/chatgpt-dev-mcp-installer")
 CADDY = Path("/etc/caddy/Caddyfile")
 SITE = Path("/etc/caddy/sites-enabled/chatgpt-dev-mcp.caddy")
+CLOUDFLARED_KEYRING = Path("/usr/share/keyrings/cloudflare-main.gpg")
+CLOUDFLARED_APT_SOURCE = Path("/etc/apt/sources.list.d/cloudflared.list")
 VERSION = json.loads((SOURCE / "RELEASE.json").read_text())["version"]
 OWNER = "chatgpt-mcp"
 RUNNER = "chatgpt-runner"
@@ -195,11 +197,11 @@ def ensure_cloudflared():
         key=response.read(512*1024+1)
     if len(key)>512*1024 or len(key)<128:
         raise InstallError("Cloudflare apt signing key download invalid")
-    keyring=Path("/usr/share/keyrings/cloudflare-main.gpg")
-    keyring.parent.mkdir(mode=0o755,parents=True,exist_ok=True)
-    atomic_write(keyring,key,0o644)
-    repo=Path("/etc/apt/sources.list.d/cloudflared.list")
-    atomic_write(repo,b"deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main\n",0o644)
+    CLOUDFLARED_KEYRING.parent.mkdir(mode=0o755,parents=True,exist_ok=True)
+    atomic_write(CLOUDFLARED_KEYRING,key,0o644)
+    source=(f"deb [signed-by={CLOUDFLARED_KEYRING}] "
+            "https://pkg.cloudflare.com/cloudflared any main\n")
+    atomic_write(CLOUDFLARED_APT_SOURCE,source,0o644)
     run("apt-get","update")
     run("apt-get","install","-y","cloudflared")
     if not shutil.which("cloudflared"):raise InstallError("cloudflared installed but is not on PATH")
@@ -242,13 +244,21 @@ def render_env(values: dict[str, str]) -> str:
         k + "=" + quote_env(v) + "\n" for k, v in values.items()
     )
 
-def atomic_write(path: Path, value: str, mode=0o600):
+def atomic_write(path: Path, value: str | bytes, mode=0o600):
+    # Keep text files UTF-8 while preserving exact binary bytes (notably
+    # Cloudflare's signed OpenPGP apt keyring). Never decode/re-encode keys.
+    if isinstance(value, str):
+        payload = value.encode("utf-8")
+    elif isinstance(value, bytes):
+        payload = value
+    else:
+        raise TypeError("atomic_write accepts text or bytes")
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.parent / (".core-mcp-" + secrets.token_hex(8))
     fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, mode)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as out:
-            out.write(value)
+        with os.fdopen(fd, "wb") as out:
+            out.write(payload)
             out.flush()
             os.fsync(out.fileno())
         os.chmod(tmp, mode)

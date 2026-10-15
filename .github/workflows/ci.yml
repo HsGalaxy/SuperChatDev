@@ -44,3 +44,4 @@ jobs:
         run: |
           ./install.sh --dry-run --mode fresh --domain mcp.yourdomain.org --proxy caddy
           ./install.sh --dry-run --mode upgrade
+          ./install.sh --install-cloudflared --dry-run

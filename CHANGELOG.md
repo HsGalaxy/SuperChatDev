@@ -2,6 +2,7 @@
 
 ## 0.3.12 — Reliable large-project execution and resource isolation
 
+- Hotfix: optional cloudflared installation now writes binary Cloudflare GPG keyrings byte-for-byte, fixing the previous TypeError on Debian 13/Ubuntu. Add offline regression tests for the official APT source, 0644 permissions, optional-install idempotency and oversized-key rejection.
 - New install defaults of TasksMax=1024 and MemoryMax=4G. Existing units unchanged unless explicitly applying --apply-resource-limits; backups and automatic rollback cover managed drop-ins and service configuration.
 - Opt-in sibling systemd Runner with private 0600 Unix IPC and 768 tasks / 4G; control plane 512 tasks / 2G in isolated mode. Durable jobs, workspace batches and quick commands offload without changing IDs, logs, cancellation, or request_id replay safeguards. No privilege escalation through Admin.
 - Desktop Commander is cache-only in Core/Native modes, connects in opted-in DC profiles, and drains outstanding requests before stopping; existing published tool names remain compatible.

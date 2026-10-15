@@ -1,7 +1,7 @@
 {
   "version": "0.3.12",
   "files": {
-    "CHANGELOG.md": "e037767b3ec820b569b39385720a6d4ff512c59d4f4d6a9514956ea8950d1428",
+    "CHANGELOG.md": "24a3e870bcdaed214ed7c7e6fec8f1df49bfc4e4ad989255aeb35e2ba4b17c88",
     "README.md": "804dd5e97e8b09a8088828367a1991adeec94d78d5564669cec734f7018f2b83",
     "package.json": "a659bd58ca0c35b03469070f03ec6d4d3ce45f63e5295ffec52a474df0677cfb",
     "src/admin-files.mjs": "e9abe9394d760e21df7e8b93e52602e6d41dad85802583896c1fdf095b0d88e2",
