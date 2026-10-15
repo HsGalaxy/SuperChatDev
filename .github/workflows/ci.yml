@@ -14,6 +14,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      # Check release integrity even for docs-only changes. README.md ships
+      # with the release, so an edit without refreshing RELEASE.json is broken.
+      - name: Verify release SHA-256 manifest
+        run: python3 scripts/verify_release_manifest.py
+      - name: Test release manifest validation
+        run: python3 -m unittest discover -s test -p 'test_release_manifest.py'
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
