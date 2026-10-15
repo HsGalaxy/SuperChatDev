@@ -1,7 +1,7 @@
 {
   "version": "0.3.9",
   "files": {
-    "README.md": "8c7be3d44247338f99f4a9fae893e1d0894feef9e98cbbe60a4d0d1ebc53a851",
+    "README.md": "2b06b7f49e1675d44f8be53b483aebfad1ffe5d83727dda92a5f3a684231f710",
     "package.json": "b7718733e79f6a537241c0d205ab6649b5c3d1ee2a6acc5b453aed4452cbd557",
     "src/admin-files.mjs": "e9abe9394d760e21df7e8b93e52602e6d41dad85802583896c1fdf095b0d88e2",
     "src/admin.mjs": "a53fe18a8e49784b794a21c1f600463db3c307edcc485bd573afaa1cb52be068",

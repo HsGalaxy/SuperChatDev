@@ -3,7 +3,7 @@
 **专为 ChatGPT 原生网页版打造的 MCP 开发环境。**
 不是 All-in-One Agent 框架，不是 IDE，也不是万能工具箱。
 
-[**简体中文**](README.md) · [English](README.en.md) · [安装指南](docs/zh-CN/INSTALLATION.md) · [使用与工具](docs/zh-CN/TOOLS.md) · [常见问题](docs/zh-CN/TROUBLESHOOTING.md)
+[**简体中文**](README.md) · [English](README.en.md) · [安装指南](docs/zh-CN/INSTALLATION.md) · [使用与工具](docs/zh-CN/TOOLS.md) · [常见问题](docs/zh-CN/TROUBLESHOOTING.md) · [开发日志](CHANGELOG.md)
 
 让 ChatGPT 在原生聊天窗口里完成一整个开发任务：上传 ZIP → 读取和搜索代码 → 修改文件 → 构建与测试 → 检查 Git Diff → 直接回传可下载的成品。
 
@@ -134,53 +134,8 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 
 **适用范围：** 单一受信任所有者；不是多租户执行沙箱。MCP 不能绕过 ChatGPT 网页端的平台级授权弹窗，也不能保证客户端一定支持 OAuth 自动刷新。Job 可在网关进程重启后恢复查询，但机器重启不会自动继续执行命令。
 
-**许可证：** [MIT](LICENSE) · **当前版本：** v0.3.9（中文/英文安装文档增强）
+**许可证：** [MIT](LICENSE) · **当前版本：** v0.3.9
 
-### Admin 原生 Git 配置（v0.3.4）
+## 更新日志
 
-登录 `/admin/` → **Git / GitHub**，可以为实际运行 MCP 命令的执行用户设置 Git 提交身份、生成或导入 GitHub 仓库专属 SSH Deploy Key、复制公钥、检查仓库读取，以及绑定项目的 `origin` 推送地址。已有 `~/.ssh/superchatdev_deploy_ed25519` 可直接安全沿用，不必再次生成密钥。
-
-私钥仅保留在执行用户的私有 SSH 目录，页面和接口只展示公钥；导入、沿用和删除操作需要管理员密码重新确认。GitHub 仍需人工将公钥加入对应仓库的 Settings → Deploy keys，并开启 **Allow write access**。仓库读取成功不代表推送权限已验证。
-
-
-### v0.3.5：可选性能调试与交互终端增强
-
-在 Admin 左侧新增 **性能调试** 页面。详细调试默认关闭，管理员可以随时打开，查看 MCP 请求的 P50/P95/P99、逐条耗时、HTTP 读取/解析/派发阶段、内部工具调用时间线、请求/响应大小，或导出可离线分析的 JSONL 数据。日志严格排除工具入参、Shell 命令、输出、环境变量、令牌、原始 URL、客户端 IP 和错误消息；使用 1–32 MiB 的滚动文件上限，最多保留当前与上一份。普通 Trace 仍会继续保留既有的基础审计字段。
-
-Interactive/Legacy 模式中的 `job_input` 增加可选的 `wait_for_prompt`，识别常见 Shell/Python/IPython 提示符，直到提示符、退出或超时才返回。`job_read` 可用 `tail_lines` 查看最近 N 行而不改变原来的 `next_offset`。状态提示仅为启发式，不能替代检查退出码。这一版本改变了 `job_read` / `job_input` 的工具 Schema，生产升级后需在 ChatGPT App 中重新刷新、审核并发布工具定义。
-
-### v0.3.9：大型项目原生能力
-
-- fs_search 使用 engine=ripgrep 时支持大仓库高性能内容和文件名搜索、.gitignore、分页及未完成提示。需单独安装系统 /usr/bin/rg；默认原生搜索仍然可用。
-- fs_read 可流式读取超过 4 MiB 的 UTF-8 日志指定行号，局部读取不返回全文件 SHA-256。
-- native-interactive 模式包含 18 个纯原生工具，提供 job_input 和 PTY，无 DC 依赖；Core 仍为 17 个。
-- workspace_execute 新增 rename_directory：配合 fs_list(details:true) 返回的 inode，在 Linux 上做不覆盖目标的原子目录重命名；递归预检拒绝链接、特殊文件和敏感目录。
-- 本版仅在开发分支，生产升级后要重新发布客户端工具 Schema。
-
-### v0.3.8：轻量同步 Exec
-
-新 `exec` 在原 16 个核心工具之外增加一个明确不同用途的快速入口：适合 `pwd`、`git status`、`rg` 等短、可重复、通常只读的查询。支持 `argv` 或显式 `command`（干净 Bash）、工作区内 `cwd`、100–30000ms 超时和有限输出。默认 10 秒、输出 16 KiB，最长 30 秒；最多同时执行 2 个，超过 8 MiB 总输出会终止进程。
-
-它直接启动无 PTY 子进程，沿用持久任务的执行身份、环境隔离、权限要求及工作区检查，不保存 Job ID 或日志。输出保留首尾及明确的退出码。
-
-**重要限制：** 没有 `request_id` 去重或重启恢复，不能把网络中断当作“没执行”。文件修改、部署或需要可靠重试的命令应使用 `job_start` / `workspace_execute`。部署后需要在 ChatGPT 应用中刷新、审核并发布 MCP 工具定义。
-
-### v0.3.7：面向代码开发的原生工具增强（无需 DC）
-
-- **正则查找**：`fs_search(regex:true)` 可用 JavaScript 正则，独立 Worker 执行并逐文件设置 350ms 超时；默认仍为精确字面量查找，继续保护私有文件和工作区边界。
-- **大日志尾部**：`fs_read.files[].tail_lines` 可从尾部读取，文件超过 4 MiB 时最多扫描最后 256 KiB；此时不提供全文件 SHA-256，防止把局部校验误当编辑保护。
-- **文件详情**：`fs_list(details:true)` 返回大小、修改时间和权限，不跟随软链接。
-- **安全复制与移动**：`workspace_execute` 支持 `copy`、`move` 步骤；仅普通文件、128 MiB 上限、源文件 SHA-256 必填、目标存在时拒绝覆盖、禁止符号链接和硬链接源。
-- **编辑失败诊断**：`replace` / `patch` 精确匹配失败会返回有限的相似代码行、相似度和字符级差异，但绝不自动按模糊匹配修改。
-- 仍保持 **16 个 Core 工具**，但是三个工具的参数 Schema 已扩展。部署后**必须在 ChatGPT 中刷新、审核并重新发布工具定义**。完整测试和发布哈希按 v0.3.7 更新。
-
-### v0.3.6：可选 MCP 完整请求与响应抓包
-
-在 **Admin → 性能调试** 中可启用两个互相独立的级别：
-
-- **性能指标（默认关闭）**：仅记录方法、工具、耗时、状态、大小和 Trace 时间线，不记录正文。
-- **完整抓包（默认关闭）**：在开启性能指标后，再勾选“同时记录完整 MCP 请求与返回”。网关保存收到的原始 JSON-RPC 请求正文及**实际发给客户端**的 JSON-RPC 响应字符串，包括工具参数和返回结果。完整正文若超过配置的单侧字节上限，会标明截断并保存开头和结尾。
-
-请求与返回存于独立的私有文件 `mcp-content.jsonl`（还有一份轮转文件）；普通性能数据存于 `mcp-performance.jsonl`，查看性能概览不会加载原文。管理员登录并重新输入密码后可按条查看或导出敏感 JSONL。抓包数据**可能含 API Key、口令、Shell 命令、文件内容或签名 URL**；应短暂开启并及时清除。HTTP Authorization / Cookie 头与 Admin API 请求不会进入该抓包文件。日志默认每侧正文 512 KiB，单份敏感日志 16 MiB，最高可分别设为 4 MiB 和 32 MiB。待写入的敏感正文缓冲合计限制为 32 MiB，超限主动丢弃抓包并增加 Admin 中的计数。
-
-**关闭调试的性能路径**不额外获取性能时间戳、不注册完成监听、不复制/序列化报文、不创建抓包文件；仅保留一个关闭状态的轻量判断。本版本不修改现有 MCP Tool Schema，升级后无需为此功能刷新工具列表。
+新功能、修复、安全改进和升级兼容性说明统一维护在 **[CHANGELOG.md（完整开发日志）](CHANGELOG.md)**。README 只保留项目介绍、安装与使用指南。

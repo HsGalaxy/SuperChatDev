@@ -3,22 +3,22 @@
 ## 0.3.9 - Large project tooling
 
 - Optional /usr/bin/rg backend in fs_search: filename search, .gitignore, bounded pagination and partial-result reporting, while preserving the native default.
-- Stream line ranges from large UTF-8 logs without whole-file hashes or unsafe memory growth.
+- Stream line ranges from large UTF-8 logs without full-file loading; partial reads never provide a full-file SHA-256 edit guard.
 - Native-interactive profile exposes native PTY input with no Desktop Commander bridge. Core stays 17 tools, native-interactive has 18.
-- Add guarded directory rename with expected source inode, subtree validation and kernel-enforced no-clobber.
+- Add guarded `rename_directory`: source inode from `fs_list(details:true)`, subtree symlink/special-file rejection, a 10,000-item / 512 MiB scan cap, and atomic Linux no-clobber.
 - No additional Node runtime dependencies. OS ripgrep is optional; client actions require republishing.
 
 ## 0.3.8 — Low-latency one-shot developer exec
 
 - Add a distinct non-durable `exec` tool for short, preferably read-only commands. Direct child spawn bypasses worker startup, admission-lock overhead and disk-backed job records.
-- Preserve the execution identity, limited environment, workspace cwd checks and admin permissions. Bound output memory, produced bytes and concurrent processes; timeout kills the process group.
+- Preserve execution identity, limited environment, workspace checks and admin permissions. Default `exec` limits: 10-second timeout, 16 KiB output, two concurrent calls; maximum 30 seconds and 8 MiB generated output. Timeout kills the process group.
 - No request_id deduplication, saved logs, PTY or restart recovery in exec; retain `job_start` and `workspace_execute` for side effects, long tasks and reliable retries.
 - Add E2E and performance tests, bump the Core catalog to 17 tools and freeze a new v0.3.8 schema; client actions need republishing.
 
 ## 0.3.7 — DC-inspired native code workflow improvements
 
-- Opt-in bounded regex search in `fs_search` via an isolated worker; paged results and existing literal matching remain available.
-- Large-file tail reads in `fs_read` (256 KiB maximum window) and safe file metadata in `fs_list`.
+- Opt-in bounded regex search in `fs_search` via an isolated worker (350 ms per-file timeout); paged results and existing literal matching remain available.
+- Large-file tail reads in `fs_read` (256 KiB maximum window, no full-file SHA-256 claim) and safe file metadata in `fs_list`.
 - Guarded `copy` and `move` steps in durable workspace batches, with source SHA-256, no overwrite or symlink following.
 - Read-only near-match diagnostics for failed exact replaces and patch contexts. No fuzzy edits are performed.
 - Reject legacy IPv4 relay and TEST-NET ranges before HTTPS file imports; normalize IPv6 documentation addresses.
