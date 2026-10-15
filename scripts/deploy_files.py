@@ -26,7 +26,7 @@ def validate_name(name):
     if (not parts or Path(name).is_absolute() or
             any(p in ('..', '.') for p in parts)):
         raise ValueError('Unsafe manifest path')
-    if parts[0] not in ('src', 'web') and name not in ('package.json', 'README.md'):
+    if parts[0] not in ('src', 'web') and name not in ('package.json', 'README.md', 'CHANGELOG.md'):
         raise ValueError('Manifest includes a non-runtime path: ' + name)
 
 

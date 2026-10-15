@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream/promises';
 import { atomicJSON, readJSON, requireInteger } from './common.mjs';
+import { readDevelopmentLog } from './development-log.mjs';
 import { AdminFiles } from './admin-files.mjs';
 import { GitAdmin } from './git-admin.mjs';
 import { PerformanceLog, DEFAULT_PERFORMANCE, validatePerformance } from './performance.mjs';
@@ -351,6 +352,7 @@ export class AdminConsole {
     }
 
     if (req.method === 'GET' && p === '/admin/api/overview') { json(res, 200, await this.overview()); return true; }
+    if (req.method === 'GET' && p === '/admin/api/development-log') { json(res, 200, await readDevelopmentLog()); return true; }
     if (req.method === 'GET' && p === '/admin/api/activity') {
       json(res, 200, await this.activity(requireInteger(Number(url.searchParams.get('offset') || 0), 0, 0, 20000, 'offset'),
         requireInteger(Number(url.searchParams.get('limit') || 50), 50, 1, 100, 'limit'))); return true;

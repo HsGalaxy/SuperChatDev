@@ -7,6 +7,10 @@ Not an all-in-one agent platform, not an IDE, and not another generic MCP toolbo
 
 SuperChatDev enables a full software development workflow directly in ChatGPT Web: upload ZIP → inspect and search code → edit → build and test → inspect Git diff → export deliverables back to the conversation.
 
+## Development log
+
+The Admin sidebar has a separate read-only Development Log page at /admin/#devlog (login required). It shows a searchable release history from the installed [CHANGELOG.md](CHANGELOG.md), the same record used on GitHub, not MCP runtime logs or audit traces. No MCP action refresh is needed for this UI-only feature.
+
 ## 🚀 One-line installation
 
 Run this in an SSH terminal on **Debian/Ubuntu**:
@@ -119,7 +123,7 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 
 **Limitations:** Single trusted owner only, not a multi-tenant sandbox. MCP cannot disable ChatGPT's own approval dialogs or force OAuth refresh support in every client. Jobs may survive HTTP gateway restarts, but a host reboot does not automatically resume running commands.
 
-**License:** [MIT](LICENSE) · **Current runtime:** v0.3.9
+**License:** [MIT](LICENSE) · **Current runtime:** v0.3.10
 
 ## Changelog
 

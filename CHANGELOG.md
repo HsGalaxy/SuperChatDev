@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.10 — Standalone Development Log page
+
+- Add a dedicated **Admin → 开发日志 / Development Log** page, separate from runtime logs, MCP invocation audits and performance traces.
+- Display a responsive version timeline, current-version badge, keyword search, release/upcoming filters and a direct link to the GitHub CHANGELOG. Deep link: /admin/#devlog.
+- Render the same installed CHANGELOG.md tracked in GitHub through a bounded, read-only, authenticated API. Escape release notes as HTML before formatting.
+- Include CHANGELOG.md in the verified release manifest and allow only this named extra root document in installer/deployer paths.
+- No new MCP tool or action changes. Existing ChatGPT tool schemas stay compatible; a runtime upgrade is required to display the page.
+
 ## 0.3.9 - Large project tooling
 
 - Optional /usr/bin/rg backend in fs_search: filename search, .gitignore, bounded pagination and partial-result reporting, while preserving the native default.

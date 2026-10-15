@@ -9,6 +9,8 @@ const stateName = s => ({ succeeded:'成功',running:'运行中',queued:'排队�
 const status = s => '<span class="status status-' + esc(s) + '">' + esc(stateName(s)) + '</span>';
 const empty = (count, text='暂无记录') => '<tr><td class="empty-row" colspan="' + count + '">' + esc(text) + '</td></tr>';
 const isActive = s => ['running','queued'].includes(s);
+const pageNames = Object.freeze({overview:'总览',activity:'MCP 调用记录',jobs:'任务与批处理',files:'文件管理',git:'Git / GitHub',performance:'性能调试',settings:'系统设置',devlog:'开发日志'});
+let developmentLog = null;
 let csrf = '', currentPage = 'overview', filesPath = '.', filesData = [], editorPath = '', fileWritable = true;
 let toolManifest = null;
 let activityPage = 0, activityTotal = 0, activityItems = [], settingsSaved = null, toolsCatalog = [], loading = false, pendingRefresh = false;
@@ -38,6 +40,8 @@ function showLogin() {
   byId('login-password').value = ''; byId('login-error').textContent = '';
 }
 function showShell() {
+  const target = window.location.hash.slice(1);
+  if (Object.hasOwn(pageNames,target)) currentPage = target;
   byId('auth-screen').hidden = true; byId('shell').hidden = false;
   navigate(currentPage);
 }
@@ -63,7 +67,7 @@ byId('logout').addEventListener('click', async () => {
   showLogin();
 });
 function navigate(page) {
-  if (!['overview','activity','jobs','files','git','performance','settings'].includes(page)) return;
+  if (!Object.hasOwn(pageNames,page)) return;
   if (currentPage === 'settings' && page !== 'settings') clearIssuedBearer();
   if (currentPage === 'git' && page !== 'git') clearGitSecrets();
   if (currentPage === 'performance' && page !== 'performance'){
@@ -74,11 +78,16 @@ function navigate(page) {
   currentPage = page;
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + page));
   document.querySelectorAll('[data-nav]').forEach(el => el.classList.toggle('active', el.dataset.nav === page));
-  byId('top-crumb').textContent = ({overview:'总览',activity:'MCP 调用记录',jobs:'任务与批处理',files:'文件管理',git:'Git / GitHub',performance:'性能调试',settings:'系统设置'})[page];
+  byId('top-crumb').textContent = pageNames[page];
+  if (window.location.hash !== '#' + page) window.history.replaceState(null, '', '#' + page);
   document.querySelector('.sidebar').classList.remove('open');
   window.scrollTo({top:0,behavior:'instant'});
   refreshPage();
 }
+window.addEventListener('hashchange', () => {
+  const page = window.location.hash.slice(1);
+  if (Object.hasOwn(pageNames,page) && page !== currentPage) navigate(page);
+});
 document.addEventListener('click', event => {
   const nav = event.target.closest('[data-nav], [data-jump]');
   if (nav) navigate(nav.dataset.nav || nav.dataset.jump);
@@ -88,7 +97,7 @@ byId('refresh').addEventListener('click', refreshPage);
 function refreshPage() {
   if (byId('shell').hidden) return;
   if (loading) { pendingRefresh = true; return; }
-  const loaders = { overview: loadOverview, activity: loadActivity, jobs: loadJobs, files: loadFiles, git: loadGit, performance: loadPerformance, settings: loadSettings };
+  const loaders = { overview: loadOverview, activity: loadActivity, jobs: loadJobs, files: loadFiles, git: loadGit, performance: loadPerformance, settings: loadSettings, devlog: loadDevelopmentLog };
   loading = true;
   Promise.resolve(loaders[currentPage]()).catch(e => toast(e.message, true)).finally(() => {
     loading = false;
@@ -135,6 +144,47 @@ async function loadOverview() {
   setText('system-disk-details', disk ? formatBytes(usedDisk) + ' / ' + formatBytes(disk.total) : '无法读取');
   setProgress('bar-disk', diskP); setText('system-rss', formatBytes(s.process_rss));
 }
+
+// Release notes are documentation, not MCP calls, job logs or runtime traces.
+// Escape Markdown source before applying a tiny safe inline-formatting subset.
+function devlogInline(value) {
+  const parts = esc(value).split(String.fromCharCode(96));
+  return parts.map((piece,i)=>i%2?'<code>'+piece+'</code>':piece)
+    .join('').replace(/\*\*([^*\n]{1,160})\*\*/g,'<strong>$1</strong>');
+}
+function renderDevelopmentLog() {
+  if (!developmentLog) return;
+  const query = byId('devlog-query').value.trim().toLowerCase();
+  const kind = byId('devlog-filter').value;
+  const entries = developmentLog.entries.filter(x =>
+    (kind==='all'||x.kind===kind) &&
+    (!query||(x.label+' '+x.items.join(' ')).toLowerCase().includes(query)));
+  setText('devlog-count',entries.length+' / '+developmentLog.entries.length+' 条版本记录');
+  byId('devlog-entries').innerHTML = entries.length ? entries.map(x=>{
+    const current=x.version===developmentLog.version;
+    const badge=x.kind==='unreleased'?'待发布':current?'当前版本':x.kind==='release'?'已发布':'记录';
+    const details=x.items.length?'<ul>'+x.items.map(note=>'<li>'+devlogInline(note)+'</li>').join('')+'</ul>':
+      '<p class="devlog-no-details">暂无详细说明</p>';
+    return '<article class="devlog-entry"><span class="devlog-point" aria-hidden="true"></span>'+
+      '<div class="panel devlog-card'+(current?' is-current':'')+'">'+
+      '<div class="devlog-entry-meta"><span class="devlog-tag'+(current?' is-current':'')+'">'+esc(badge)+
+      '</span><span class="devlog-version">'+esc(x.version?'v'+x.version:x.label)+'</span></div>'+
+      '<h3>'+devlogInline(x.title||x.label)+'</h3>'+details+'</div></article>';
+  }).join(''):'<div class="panel devlog-empty">没有符合条件的版本记录。</div>';
+}
+async function loadDevelopmentLog() {
+  try {
+    developmentLog=await api('development-log');
+    setText('devlog-current-version','v'+developmentLog.version);
+    setText('devlog-release-count',developmentLog.release_count+' 个正式版本 · 只读记录');
+    renderDevelopmentLog();
+  }catch(error) {
+    byId('devlog-entries').innerHTML='<div class="panel devlog-empty">加载开发日志失败：'+esc(error.message)+'</div>';
+    throw error;
+  }
+}
+byId('devlog-query').addEventListener('input',renderDevelopmentLog);
+byId('devlog-filter').addEventListener('change',renderDevelopmentLog);
 
 byId('activity-reload').addEventListener('click', () => loadActivity().catch(e => toast(e.message,true)));
 byId('activity-query').addEventListener('input', renderActivity);

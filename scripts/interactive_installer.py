@@ -208,7 +208,7 @@ def verify_release() -> int:
         parts = Path(name).parts
         if (not parts or ".." in parts or Path(name).is_absolute()
             or not (name.startswith("src/") or name.startswith("web/")
-                    or name in ("package.json", "README.md"))):
+                    or name in ("package.json", "README.md", "CHANGELOG.md"))):
             raise InstallError("Unsafe release manifest path: " + name)
         f = SOURCE / name
         if f.is_symlink() or not f.is_file() or hashlib.sha256(f.read_bytes()).hexdigest() != digest:
