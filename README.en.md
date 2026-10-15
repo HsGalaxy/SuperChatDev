@@ -57,7 +57,7 @@ For an existing installation, run the same command and select **Upgrade** (the w
 - Source listing, reading and searching, SHA-256-guarded edits, dependent builds/tests, read-only Git diff review.
 - Workspace retained under `/var/lib/chatgpt-dev-mcp/workspace`.
 - PKCE OAuth, rotating refresh credentials, admin console and strict core tool contracts.
-- Just **16 Core tools**, optional Desktop Commander interactive shell.
+- Just **17 Core tools**, optional Desktop Commander interactive shell.
 
 ### Development flow
 
@@ -79,14 +79,15 @@ file_export → downloadable project in ChatGPT
 
 After installing, register `https://YOUR_DOMAIN/mcp` in ChatGPT's MCP app configuration, and use `https://YOUR_DOMAIN/admin/` to administer the server. Your default local health check is `http://127.0.0.1:18787/health`. OAuth authorization is required. If published tool definitions are cached, refresh/review/publish actions in ChatGPT.
 
-## The 16 Core tools
+## The 17 Core tools
 
 | Category | Tools |
 | --- | --- |
 | Environment | `dev_get_guide` |
 | ChatGPT attachment handoff | `file_import`, `file_unpack`, `file_export` |
 | Code reading/navigation | `fs_list`, `fs_read`, `fs_search` |
-| Commands and durable jobs | `job_start`, `job_read`, `job_list`, `job_cancel` |
+| Quick one-shot execution | `exec` (short command, no durable Job ID) |
+| Durable command jobs | `job_start`, `job_read`, `job_list`, `job_cancel` |
 | Multi-step edit/test | `workspace_execute`, `workspace_read`, `workspace_list`, `workspace_cancel` |
 | Read-only Git review | `workspace_review` |
 
@@ -118,7 +119,7 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 
 **Limitations:** Single trusted owner only, not a multi-tenant sandbox. MCP cannot disable ChatGPT's own approval dialogs or force OAuth refresh support in every client. Jobs may survive HTTP gateway restarts, but a host reboot does not automatically resume running commands.
 
-**License:** [MIT](LICENSE) · **Current runtime:** v0.3.7
+**License:** [MIT](LICENSE) · **Current runtime:** v0.3.8
 
 ### Git / GitHub from Admin (v0.3.4)
 
@@ -130,6 +131,14 @@ Open `/admin/` → **Git / GitHub** to configure the real command runner's Git c
 The new Admin **Performance Diagnostics** page records MCP request timing only when explicitly enabled. Explore P50/P95/P99, read/parse/dispatch phases, tool milestones, request/response byte counts and bounded JSONL exports. Commands, arguments, terminal output, OAuth tokens, headers, URLs, addresses, and error messages are never logged. Two rotated files are kept with a configurable 1–32 MiB per-file cap.
 
 In Interactive/Legacy profiles, `job_input(wait_for_prompt=true)` can wait for common shell/Python/IPython prompts without resending input; `job_read(tail_lines=N)` returns the most recent log lines independently of the durable byte cursor. Prompt detection is heuristic. These optional arguments modify the ChatGPT tool schema; refresh/review/publish app actions after updating production.
+
+### v0.3.8: Low-latency one-shot Exec
+
+The 17-tool Core adds `exec` for brief, repeatable, preferably read-only commands (pwd, git status, rg). Supports argv or explicit clean Bash, workspace-relative cwd, a 100–30000ms timeout and bounded output. Defaults: 10s and 16 KiB. Maximum 2 concurrent calls; 8 MiB produced-output cap.
+
+Unlike durable `job_start`, exec directly spawns a non-PTY subprocess using the same execution identity, restricted environment, workspace path checks and administrator permissions. It retains no Job ID or persistent logs.
+
+**Do not replay side-effecting commands through exec:** there is no request_id, deduplication or restart recovery. Use job_start and a stable request_id for writes, long tasks or reliable retries. Client action definitions must be refreshed/reviewed/published after deployment.
 
 ### v0.3.7: native developer ergonomics (no DC required)
 

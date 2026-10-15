@@ -2,14 +2,15 @@
 
 [中文首页](../../README.md) · [English](../TOOLS.md)
 
-SuperChatDev **Core 模式共 16 个工具**，尽量让模型一眼知道什么时候用哪个工具。
+SuperChatDev **Core 模式共 17 个工具**，尽量让模型一眼知道什么时候用哪个工具。
 
 | 阶段 | 工具 |
 | --- | --- |
 | 查询环境 | `dev_get_guide` |
 | 原生附件传入/解压/返回 | `file_import`, `file_unpack`, `file_export` |
 | 查代码 | `fs_list`, `fs_read`, `fs_search` |
-| 单命令、长任务控制 | `job_start`, `job_read`, `job_list`, `job_cancel` |
+| 快速单次命令 | `exec`（短命令、同步返回，无持久 Job） |
+| 可恢复任务控制 | `job_start`, `job_read`, `job_list`, `job_cancel` |
 | 多步骤开发编排 | `workspace_execute`, `workspace_read`, `workspace_list`, `workspace_cancel` |
 | Git 差异审查 | `workspace_review` |
 
@@ -21,7 +22,7 @@ SuperChatDev **Core 模式共 16 个工具**，尽量让模型一眼知道什么
 
 ## 命令与 Job
 
-单条命令调用 `job_start`。默认最多等待 **500ms**：如果命令已完成，直接返回状态、退出码与输出；如果没完成，就得到持久任务 ID，再用 `job_read` 读取。需要立即交还任务 ID 时可指定 `wait_ms=0`。
+短且可重复的查询命令可以调用 `exec`；需要修改、持久化、交互或可靠重试的命令才调用 `job_start`。默认最多等待 **500ms**：如果命令已完成，直接返回状态、退出码与输出；如果没完成，就得到持久任务 ID，再用 `job_read` 读取。需要立即交还任务 ID 时可指定 `wait_ms=0`。
 
 涉及文件写入、多个依赖步骤和测试的流程优先使用 `workspace_execute`。使用稳定 `request_id` 安全重试；检查所有步骤终态再交付成果。Job 重启恢复指**网关进程**场景，机器断电后不会自动继续执行任意程序。
 
@@ -38,7 +39,7 @@ SuperChatDev **Core 模式共 16 个工具**，尽量让模型一眼知道什么
 - Unified Diff 的 Hunk 声明行数允许最多 3 行小偏差。原始上下文必须严格匹配；声明的起始行位置不准时仅在 ±20 行内、且**唯一命中**才允许定位。上下文不唯一会拒绝修改。
 - `job_cancel` 会短暂等待 Job 进入终态；在 worker 退出、但取消标记存在时优先收敛到 `cancelled`。`workspace_cancel` 会追踪仍未收敛的子任务并在结果标注 `cleanup_pending_jobs`。
 
-核心工具数量仍是 16 个；`workspace_execute` 新增向后兼容的 replace 步骤类型，需要 ChatGPT 端刷新、审核、发布工具定义。高风险的 inline 写入与锁替换仍不启用；正则搜索已经通过隔离 Worker 提供，详细见下文。
+v0.3.7 当时的核心工具数量仍是 16 个；`workspace_execute` 新增向后兼容的 replace 步骤类型，需要 ChatGPT 端刷新、审核、发布工具定义。高风险的 inline 写入与锁替换仍不启用；正则搜索已经通过隔离 Worker 提供，详细见下文。
 
 ## 精确替换（推荐小改动）
 
@@ -119,3 +120,16 @@ SuperChatDev **Core 模式共 16 个工具**，尽量让模型一眼知道什么
     {"cwd":"project","query":"function\s+handle[A-Za-z]+","glob":"src/**/*.mjs","regex":true}
 
 服务端 Schema 已扩展，部署后必须在 ChatGPT 的 MCP 应用设置中**刷新、审核并发布工具定义**；不会自动改变生产服务或旧会话的工具缓存。
+
+## v0.3.8：低延迟 Exec
+
+本版核心工具从 16 个变为 **17 个**，只增加一个用途明确的 `exec`。它专门处理短、可重复、通常只读的命令，例如 `pwd`、`git status --short`、`rg`、`ls`。
+
+- 参数：`argv`（推荐、无隐式 Shell）或 `command`（显式 Bash）二选一；可设置工作区相对 `cwd`、`timeout_ms`（100–30000，默认 10000）和 `max_output_bytes`（256–65536，默认 16384）。
+- 返回：`status`、`exit_code`、合并输出 `output`、`duration_ms`、超时和截断信息。非零退出码与 MCP 网关错误不同。
+- 安全：沿用 `job_start` 的执行身份、工作区路径、环境变量白名单和管理员权限；最多两个并发，产生输出超过 8 MiB 就会中止；超时向进程组发送 TERM 和 KILL。
+- **不持久化、不提供 request_id、不提供 PTY**。网络断开不等于命令没执行，因此有副作用的修改、部署、需要可靠重试的长任务仍须使用 `job_start` 或 `workspace_execute`。
+
+示例：`{"cwd":"project","argv":["git","status","--short"],"timeout_ms":5000}`
+
+部署新版本后需要在 ChatGPT 应用管理刷新、审核并发布 MCP Tool Schema。

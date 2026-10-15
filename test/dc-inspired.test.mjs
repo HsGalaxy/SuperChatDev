@@ -188,7 +188,7 @@ test('real MCP HTTP core workflow exposes regex, tail, metadata, and guarded cop
   const call=(name,args)=>rpc('tools/call',{name,arguments:args});
   await writeFile(path.join(c.workspace,'hello.js'),'const answer=42;\nlast error\n');
   const tools=(await rpc('tools/list')).tools;
-  assert.equal(tools.length,16);
+  assert.equal(tools.length,17);
   assert.ok(tools.find(tool=>tool.name==='fs_search').inputSchema.properties.regex);
   assert.ok(tools.find(tool=>tool.name==='fs_read').inputSchema.properties.files.items.properties.tail_lines);
   const match=(await call('fs_search',{query:'answer=[0-9]+',regex:true})).structuredContent;

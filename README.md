@@ -69,7 +69,7 @@ cd SuperChatDev
 | 持久化工作区 | 默认 `/var/lib/chatgpt-dev-mcp/workspace`，适合长期代码项目 |
 | 完整开发闭环 | 文件导航、SHA-256 防并发覆盖、补丁、测试、Git 只读审查 |
 | OAuth 与管理后台 | PKCE、轮换刷新令牌、细粒度策略和独立 Web 设置页 |
-| 精简工具数量 | 16 个默认核心工具；可选内置 PTY 输入或 DC 桥接，默认不暴露冗余工具 |
+| 精简工具数量 | 17 个默认核心工具；可选内置 PTY 输入或 DC 桥接，默认不暴露冗余工具 |
 
 ```text
 ChatGPT 网页端
@@ -94,18 +94,19 @@ file_export
 
 安装完成后，把 `https://你的域名/mcp` 添加到 ChatGPT 的 MCP 应用配置中。后台位于 `https://你的域名/admin/`，本机默认健康检查为 `http://127.0.0.1:18787/health`。按客户端要求完成 OAuth 登录。服务器升级了工具 Schema 后，可能还需要在 ChatGPT 工作区刷新、审核并发布工具定义。
 
-## 核心工具（16 个）
+## 核心工具（17 个）
 
 | 任务 | 工具 |
 | --- | --- |
 | 环境信息 | `dev_get_guide` |
 | 上传 / 解压 / 下载 | `file_import`、`file_unpack`、`file_export` |
 | 源码查找与阅读 | `fs_list`、`fs_read`、`fs_search` |
-| 命令执行与任务恢复 | `job_start`、`job_read`、`job_list`、`job_cancel` |
+| 快速单次执行 | `exec`（短命令，直接返回，无持久记录） |
+| 可恢复任务与进程管理 | `job_start`、`job_read`、`job_list`、`job_cancel` |
 | 多步骤开发与测试 | `workspace_execute`、`workspace_read`、`workspace_list`、`workspace_cancel` |
 | Git 只读审查 | `workspace_review` |
 
-`job_start` 用于**单条命令**，默认最多等 500ms；`workspace_execute` 用于**有依赖关系的多步骤修改/构建/测试**，并不是重复的 exec 工具。
+`exec` 用于**短而可重复的查询命令**；`job_start` 用于**长命令、交互、带副作用且需要幂等重试的操作**，默认最多等待 500ms；`workspace_execute` 用于有依赖关系的多步骤修改、构建和测试。
 
 ## 文档
 
@@ -133,7 +134,7 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 
 **适用范围：** 单一受信任所有者；不是多租户执行沙箱。MCP 不能绕过 ChatGPT 网页端的平台级授权弹窗，也不能保证客户端一定支持 OAuth 自动刷新。Job 可在网关进程重启后恢复查询，但机器重启不会自动继续执行命令。
 
-**许可证：** [MIT](LICENSE) · **当前版本：** v0.3.7（中文/英文安装文档增强）
+**许可证：** [MIT](LICENSE) · **当前版本：** v0.3.8（中文/英文安装文档增强）
 
 ### Admin 原生 Git 配置（v0.3.4）
 
@@ -147,6 +148,14 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 在 Admin 左侧新增 **性能调试** 页面。详细调试默认关闭，管理员可以随时打开，查看 MCP 请求的 P50/P95/P99、逐条耗时、HTTP 读取/解析/派发阶段、内部工具调用时间线、请求/响应大小，或导出可离线分析的 JSONL 数据。日志严格排除工具入参、Shell 命令、输出、环境变量、令牌、原始 URL、客户端 IP 和错误消息；使用 1–32 MiB 的滚动文件上限，最多保留当前与上一份。普通 Trace 仍会继续保留既有的基础审计字段。
 
 Interactive/Legacy 模式中的 `job_input` 增加可选的 `wait_for_prompt`，识别常见 Shell/Python/IPython 提示符，直到提示符、退出或超时才返回。`job_read` 可用 `tail_lines` 查看最近 N 行而不改变原来的 `next_offset`。状态提示仅为启发式，不能替代检查退出码。这一版本改变了 `job_read` / `job_input` 的工具 Schema，生产升级后需在 ChatGPT App 中重新刷新、审核并发布工具定义。
+
+### v0.3.8：轻量同步 Exec
+
+新 `exec` 在原 16 个核心工具之外增加一个明确不同用途的快速入口：适合 `pwd`、`git status`、`rg` 等短、可重复、通常只读的查询。支持 `argv` 或显式 `command`（干净 Bash）、工作区内 `cwd`、100–30000ms 超时和有限输出。默认 10 秒、输出 16 KiB，最长 30 秒；最多同时执行 2 个，超过 8 MiB 总输出会终止进程。
+
+它直接启动无 PTY 子进程，沿用持久任务的执行身份、环境隔离、权限要求及工作区检查，不保存 Job ID 或日志。输出保留首尾及明确的退出码。
+
+**重要限制：** 没有 `request_id` 去重或重启恢复，不能把网络中断当作“没执行”。文件修改、部署或需要可靠重试的命令应使用 `job_start` / `workspace_execute`。部署后需要在 ChatGPT 应用中刷新、审核并发布 MCP 工具定义。
 
 ### v0.3.7：面向代码开发的原生工具增强（无需 DC）
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.8 — Low-latency one-shot developer exec
+
+- Add a distinct non-durable `exec` tool for short, preferably read-only commands. Direct child spawn bypasses worker startup, admission-lock overhead and disk-backed job records.
+- Preserve the execution identity, limited environment, workspace cwd checks and admin permissions. Bound output memory, produced bytes and concurrent processes; timeout kills the process group.
+- No request_id deduplication, saved logs, PTY or restart recovery in exec; retain `job_start` and `workspace_execute` for side effects, long tasks and reliable retries.
+- Add E2E and performance tests, bump the Core catalog to 17 tools and freeze a new v0.3.8 schema; client actions need republishing.
+
 ## 0.3.7 — DC-inspired native code workflow improvements
 
 - Opt-in bounded regex search in `fs_search` via an isolated worker; paged results and existing literal matching remain available.

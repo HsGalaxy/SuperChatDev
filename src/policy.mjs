@@ -22,7 +22,7 @@ export function toolRequirements(name, args = {}, upstream = false) {
   if (name === 'file_unpack') return ['fileTransfer','filesystemRead','filesystemWrite'];
   if (name === 'file_export') return ['fileTransfer','filesystemRead'];
   if (name.startsWith('fs_') || name === 'workspace_review') return ['filesystemRead'];
-  if (name === 'job_start') return ['jobs','commandExecution','filesystemRead','filesystemWrite'];
+  if (name === 'job_start' || name === 'exec') return ['jobs','commandExecution','filesystemRead','filesystemWrite'];
   if (name === 'workspace_execute') {
     const result = new Set(['workspace']);
     for (const step of Array.isArray(args.steps) ? args.steps : []) {

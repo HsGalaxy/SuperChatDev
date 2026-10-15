@@ -92,9 +92,9 @@ test('text-only upstream result remains text-only (trace metadata does not swall
   assert.equal(result.structuredContent,undefined);assert.equal(result.content[0].text,'actual content');assert.ok(result._meta['dev/trace_id']);
 });
 
-test('core catalog has sixteen tools, excludes DC, and preserves native file parameter annotation',async t=>{
+test('core catalog has seventeen tools, excludes DC, and preserves native file parameter annotation',async t=>{
   const c=await setup(t);const {app,rpc,call}=await serve(t,c);
-  const catalog=await rpc('tools/list');assert.equal(catalog.tools.length,16);
+  const catalog=await rpc('tools/list');assert.equal(catalog.tools.length,17);
   assert.equal(catalog.tools.find(x=>x.name==='file_import')._meta['openai/fileParams'][0],'file');
   assert.ok(catalog.tools.some(x=>x.name==='workspace_execute'));assert.ok(catalog.tools.some(x=>x.name==='fs_read'));
   assert.ok(!catalog.tools.some(x=>x.name==='set_config_value'));
@@ -181,10 +181,10 @@ test('core/interactive/legacy profiles share discovery and execution policy',asy
   const c=await setup(t);const {app,call}=await serve(t,c);
   const names=['start_process','read_process_output','interact_with_process','force_terminate','list_sessions','write_file','set_config_value','get_prompts'];
   for(const name of names){app.tools.push({name,inputSchema:{type:'object',properties:{}}});app.admin.names.add(name);app.admin.upstreamNames.add(name);}
-  assert.equal(app.catalog().visible_count,16);const hash=app.catalog().sha256;
-  app.admin.settings.toolProfile='interactive';assert.equal(app.catalog().visible_count,22); // +1 opt-in job_input
+  assert.equal(app.catalog().visible_count,17);const hash=app.catalog().sha256;
+  app.admin.settings.toolProfile='interactive';assert.equal(app.catalog().visible_count,23); // +1 opt-in job_input
   assert.equal(app.admin.allowed('set_config_value'),false);assert.equal(app.admin.allowed('write_file'),false);
-  app.admin.settings.toolProfile='legacy';assert.equal(app.catalog().visible_count,25); // +1 opt-in job_inputassert.notEqual(app.catalog().sha256,hash);
+  app.admin.settings.toolProfile='legacy';assert.equal(app.catalog().visible_count,26); // +1 opt-in job_inputassert.notEqual(app.catalog().sha256,hash);
   app.admin.settings.permissions.filesystemWrite=false;
   assert.equal(app.admin.allowed('write_file'),false);assert.equal(app.admin.allowed('start_process'),false);assert.equal(app.admin.allowed('read_process_output'),true);
   app.admin.settings.limits.callsPerMinute=1;app.admin.callTimes=[Date.now()];

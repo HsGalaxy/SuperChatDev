@@ -76,11 +76,11 @@ test('PTY argument quoting preserves literal shell-sensitive argv', {skip:!avail
  await assert.rejects(stat(path.join(workspace,'evil_file')),{code:'ENOENT'});
 });
 
-test('default tool catalog stays at 16 and PTY input is opt-in',async t=>{
+test('default tool catalog has 17 and PTY input is opt-in',async t=>{
  const {workspace,dataRoot}=await fixture(t);
  const app=await createApp({workspace,dataRoot,bearerToken:'test-only'});
  t.after(()=>app.server.close());
- assert.equal(app.catalog().visible_tools.length,16);
+ assert.equal(app.catalog().visible_tools.length,17);
  assert.ok(!app.catalog().visible_tools.includes('job_input'));
  assert.equal(app.admin.allowed('job_input'),false);
  app.admin.settings.toolProfile='interactive';

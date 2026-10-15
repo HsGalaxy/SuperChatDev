@@ -1,6 +1,6 @@
 # Core tool contract
 
-Core (16): `dev_get_guide`; `file_import`, `file_unpack`, `file_export`; `fs_list`, `fs_read`, `fs_search`; `job_start`, `job_read`, `job_list`, `job_cancel`; `workspace_execute`, `workspace_read`, `workspace_list`, `workspace_cancel`; `workspace_review`.
+Core (17): `dev_get_guide`; `file_import`, `file_unpack`, `file_export`; `fs_list`, `fs_read`, `fs_search`; `exec`; `job_start`, `job_read`, `job_list`, `job_cancel`; `workspace_execute`, `workspace_read`, `workspace_list`, `workspace_cancel`; `workspace_review`.
 
 Native upload uses the ChatGPT file parameter (`_meta.openai/fileParams`); it is **not** a sandbox path or arbitrary model-generated Base64. Export creates a signed HTTPS artifact and MCP resource. The two transfer interfaces are intentionally asymmetric.
 
@@ -17,7 +17,7 @@ Schema snapshot tests guard all 16 existing tools. Changing a schema requires in
 - Unified Diff accepts a small (<=3 line) header count discrepancy, and relocates a hunk within +/-20 lines only if the exact old context has **one unambiguous match**. No fuzzy or approximate content editing.
 - Cancellation waits briefly for terminal job state, with coordinator cleanup reporting unresolved child jobs in `cleanup_pending_jobs`.
 
-Still 16 Core tools; an additive `replace` step was added to workspace_execute (client action refresh required). In-process privileged file writes, lock replacement, ZIP compression and regex search remain deferred pending isolated audits.
+At v0.3.7 there were still 16 Core tools; an additive `replace` step was added to workspace_execute (client action refresh required). In-process privileged file writes, lock replacement, ZIP compression and regex search remain deferred pending isolated audits.
 
 ## Exact snippet replacement
 
@@ -82,3 +82,13 @@ Example:
     {"cwd":"project","query":"function\s+handle[A-Za-z]+","glob":"src/**/*.mjs","regex":true}
 
 These enhancements preserve the existing workspace guards and single-owner security model. They do not turn the job runner into a hostile-code multi-tenant sandbox.
+
+## v0.3.8: One-shot exec for short commands
+
+The Core catalog exposes **17 tools**. `exec` returns status, exit_code, signal, combined output, duration_ms and truncation/timeout indicators in one request, without saving a Job. Parameters: exactly one of `argv` (preferred, no implicit shell) or `command` (explicit Bash); optional workspace-relative `cwd`, `timeout_ms` (100..30000, default 10000), `max_output_bytes` (256..65536, default 16384).
+
+Example: `{"argv":["git","status","--short"],"cwd":"project","timeout_ms":5000}`
+
+Failure exits have `status=failed`, not a gateway error. Timeouts have `status=timeout`, and very large output is stopped with `status=output_limit`. Execution retains existing commandExecution/jobs/filesystemRead/filesystemWrite permissions and the unprivileged runner identity. Two concurrent calls are allowed by default.
+
+**Unlike job_start, exec has no request_id, PTY, durable logs, Job ID or restart recovery.** A disconnected HTTP response is not proof of nonexecution. Prefer exec for repeatable inspections; use job_start with request_id or workspace_execute for writes, deployments, long-running processes and reliable retries. Refresh/review/publish the MCP app actions after upgrading.

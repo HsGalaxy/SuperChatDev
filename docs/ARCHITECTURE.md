@@ -2,7 +2,7 @@
 
 ChatGPT web → public HTTPS proxy (Caddy or existing) → loopback HTTP MCP gateway → OAuth, policy, trace, file/Code, durable Job and Workspace runtimes → unprivileged Linux runner and persisted workspace. Optional DC bridge is a separate upstream process, not required by Core.
 
-The Core profile exposes 16 tools; Interactive exposes five additional DC terminal operations when available, Legacy restores upstream compatibility tools. File paths in `file_import`, `file_export`, `file_unpack` are relative to `WORKSPACE_ROOT`; `fs_*` and batch paths are relative to `cwd`. Code reading reports SHA-256, enabling optimistic guarded edits. Jobs are durable across the HTTP gateway restart, **not** automatic host-reboot resumption. `job_start` defaults to 500ms response wait and long jobs return IDs for `job_read`. Multi-step dependency plans use `workspace_execute`.
+The Core profile exposes 17 tools (the original 16 plus one-shot exec); Interactive exposes five additional DC terminal operations when available, Legacy restores upstream compatibility tools. File paths in `file_import`, `file_export`, `file_unpack` are relative to `WORKSPACE_ROOT`; `fs_*` and batch paths are relative to `cwd`. Code reading reports SHA-256, enabling optimistic guarded edits. Jobs are durable across the HTTP gateway restart, **not** automatic host-reboot resumption. `job_start` defaults to 500ms response wait and long jobs return IDs for `job_read`. Multi-step dependency plans use `workspace_execute`.
 
 OAuth is Authorization Code + PKCE S256 with opaque Access Tokens and optional refresh credentials; no JWT signer or OAuth client secret. Refresh needs client support. Admin settings are private state, distinct from runtime executable code. The system is single-owner; filesystem policy is not full tenant isolation.
 
@@ -13,3 +13,9 @@ Version 0.3.3 keeps 16 default Core tools and offers PTY input only under intera
 ## v0.3.7 native developer helpers
 
 Regex scans use a short-lived Node worker with a hard per-file deadline rather than running arbitrary patterns on the MCP event loop. Scoped no-symlink file descriptors read text before handing it to the worker. Large-file tails are bounded to 256 KiB and cannot supply full-file SHA-256. Guarded copy/move executes through the existing unprivileged workspace helper with no-clobber destination publishing and source hash checks. Similarity hints are advisory only; real edits still require exact context.
+
+## v0.3.8 quick execution model
+
+One-shot `exec` runs as a detached process group directly under the gateway for short repeatable queries, avoiding the Job worker and disk-backed state. It enforces the same unprivileged execution identity, allowlisted environment, workspace cwd checks and admin authorization as `job_start`. Output is bounded (16 KiB default, 64 KiB maximum retained) with a head/tail preview; output production is capped at 8 MiB. Timeout defaults to 10 seconds, maximum 30 seconds, with SIGTERM and SIGKILL escalation. Only two concurrent calls are admitted per gateway.
+
+**Tradeoff:** no durable Job ID, request_id deduplication, PTY or restart recovery. An interrupted HTTP request can leave side effects uncertain. Commands requiring writes, long execution or retries should use job_start or workspace_execute. This interface is not a sandbox and does not guarantee removal of deliberately daemonized descendants that leave their process group.
