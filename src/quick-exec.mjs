@@ -5,14 +5,15 @@ import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { isInside, requireInteger, scopedPath, executionCommand } from './common.mjs';
 import { executionEnvironment } from './environment.mjs';
+import {runnerRequest} from './runner-ipc.mjs';
 import { headUtf8, tailUtf8, TailBuffer } from './head-tail.mjs';
 
 const defaultTimeout = 10000;
 const defaultOutput = 16384;
 
 export class QuickExec {
-  constructor({ workspace, dataRoot, executionUid, executionGid, executionHome, executionEnv, maxJobs = 4 }) {
-    Object.assign(this, { workspace, dataRoot, executionUid, executionGid, executionHome, executionEnv });
+  constructor({ workspace, dataRoot, executionUid, executionGid, executionHome, executionEnv, maxJobs = 4, runnerSocket }) {
+    Object.assign(this, { workspace, dataRoot, executionUid, executionGid, executionHome, executionEnv, runnerSocket });
     // Separate small admission budget: these commands are not durable Jobs.
     this.capacity = Math.min(2, Math.max(1, maxJobs));
     this.running = 0;
@@ -34,6 +35,11 @@ export class QuickExec {
     }
     const timeout = requireInteger(timeout_ms, defaultTimeout, 100, 30000, 'timeout_ms');
     const maxBytes = requireInteger(max_output_bytes, defaultOutput, 256, 65536, 'max_output_bytes');
+    if(this.runnerSocket){
+      return runnerRequest(this.runnerSocket,{op:'exec',params:{
+        argv,cwd,timeout_ms:timeout,max_output_bytes:maxBytes
+      }},{timeoutMs:timeout+5000});
+    }
     const directory = await scopedPath(this.workspace, cwd);
     if (this.dataRoot && isInside(this.dataRoot, directory))
       throw new Error('Quick exec cannot use the private MCP state directory as cwd');

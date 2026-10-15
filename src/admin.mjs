@@ -11,6 +11,8 @@ import { AdminFiles } from './admin-files.mjs';
 import { GitAdmin } from './git-admin.mjs';
 import { PerformanceLog, DEFAULT_PERFORMANCE, validatePerformance } from './performance.mjs';
 import { PROFILES, denialReason, LEGACY_TOOL_NAMES } from './policy.mjs';
+import {resourceHealth} from './resource-health.mjs';
+import {summarizeExecutions} from './execution-summary.mjs';
 
 const MiB = 1024 * 1024;
 const rootDir = fileURLToPath(new URL('../', import.meta.url));
@@ -274,28 +276,31 @@ export class AdminConsole {
       cpu_percent: cpuPercent, cpu_count: cpus.length, load: os.loadavg(),
       memory_total: os.totalmem(), memory_free: os.freemem(),
       disk, process_rss: process.memoryUsage().rss,
+      cgroup:await resourceHealth(),
       host_uptime: os.uptime(), process_uptime: process.uptime(),
       platform: os.platform(), node: process.version, sampled_at: new Date().toISOString()
     };
   }
 
   async overview() {
-    const [activity, allJobs, allBatches, system] = await Promise.all([
-      this.activity(0, 240), this.jobs.list(), this.workspaceBatches.list(), this.metrics()
+    const [activity, jobPage, activeJobs, allBatches, system] = await Promise.all([
+      this.activity(0,240),this.jobs.page({limit:10}),this.jobs.active(),
+      this.workspaceBatches.list({limit:50}),this.metrics()
     ]);
     const now = Date.now();
     const calls = activity.calls;
     const recent = calls.filter(x => now - Date.parse(x.started_at) < 15 * 60 * 1000);
-    const activeJobs = allJobs.filter(x => ['queued', 'running'].includes(x.status));
-    const activeBatches = allBatches.executions.filter(x => ['queued', 'running'].includes(x.status));
+    // Exact active Jobs use existing small active markers. Batch active count
+    // is the recent sample only (annotated), not mislabeled as global.
+    const activeBatches=allBatches.executions.filter(x=>['queued','running'].includes(x.status));
     const histogram = Array.from({ length: 24 }, (_v, i) => {
       const begin = now - (24 - i) * 5 * 60 * 1000;
       return calls.filter(x => Date.parse(x.started_at) >= begin && Date.parse(x.started_at) < begin + 5 * 60 * 1000).length;
     });
     return { system, calls: { total: activity.total, recent_15m: recent.length, active: calls.filter(x => x.status === 'running').length,
       errors_15m: recent.filter(x => x.status === 'error').length, histogram, latest: calls.slice(0, 8) },
-      jobs: { total: allJobs.length, active: activeJobs.length, latest: allJobs.slice(0, 5).map(this.safeJob) },
-      batches: { total: allBatches.executions.length, active: activeBatches.length, latest: allBatches.executions.slice(0, 5) } };
+      jobs: { total: jobPage.total, active: activeJobs.length, latest: jobPage.jobs.slice(0,5).map(this.safeJob) },
+      batches: { total: allBatches.total, active: activeBatches.length, active_is_recent_sample: Boolean(allBatches.next_cursor), latest: allBatches.executions.slice(0,5) } };
   }
   safeJob(job) {
     const { id, cwd, status, exit_code, created_at, started_at, finished_at, trace_id, batch_execution_id } = job;
@@ -443,7 +448,15 @@ export class AdminConsole {
     }
     if (p === '/admin/api/performance' && req.method === 'GET') {
       const limit=requireInteger(Number(url.searchParams.get('limit') || 100),100,1,500,'limit');
-      json(res,200,await this.performance.summary(limit)); return true;
+      const [statistics,jobPage,batches,systemResources]=await Promise.all([
+        this.performance.summary(limit),this.jobs.page({limit:200}),
+        this.workspaceBatches.list(),resourceHealth()
+      ]);
+      statistics.execution=summarizeExecutions(jobPage.jobs,batches.executions.slice(0,200),{
+        may_be_partial:Boolean(jobPage.next_cursor||batches.next_cursor)
+      });
+      statistics.resources=systemResources;
+      json(res,200,statistics);return true;
     }
     if (p === '/admin/api/performance/trace' && req.method === 'GET') {
       const trace_id=url.searchParams.get('trace_id');

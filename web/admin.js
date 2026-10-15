@@ -792,10 +792,26 @@ async function loadPerformance() {
   setText('perf-p50',metricMs(snapshot.p50_ms));
   setText('perf-p95',metricMs(snapshot.p95_ms));
   setText('perf-p99',metricMs(snapshot.p99_ms));
+  const exec=snapshot.execution;
+  const resources=snapshot.resources;
+  let executionLine='';
+  if(exec){
+    const states=exec.states||{};
+    executionLine=' · 任务执行成功 '+(states.succeeded||0)+' / 失败 '+(states.failed||0)+
+      ' / 中断 '+(states.interrupted||0)+' / 取消 '+(states.cancelled||0)+
+      (exec.may_be_partial?'（最近样本）':'（已去重）');
+  }
+  const limits=resources?.pids;
+  const memory=resources?.memory;
+  const resourceLine=resources?.available
+    ? ' · cgroup 线程 '+limits.current+'/'+(limits.max??'∞')+
+      ' · 内存 '+formatBytes(memory.current_bytes)+' / '+(memory.max_bytes?formatBytes(memory.max_bytes):'∞')+
+      ' · PID限额累计 '+(limits.events?.max||0)+' / 内存触顶累计 '+(memory.events?.max||0)
+    : '';
   setText('perf-loss','指标缓冲丢弃：'+(snapshot.dropped||0)+
     ' · 报文缓冲丢弃：'+(snapshot.content_dropped||0)+
     (snapshot.write_error?' · 写入错误：'+snapshot.write_error:'')+
-    ' · 最多读取最近 '+(snapshot.sample_count||0)+' 条记录');
+    ' · 最多读取最近 '+(snapshot.sample_count||0)+' 条记录'+executionLine+resourceLine);
   const body=byId('perf-rows');
   body.innerHTML=(snapshot.entries||[]).length ? snapshot.entries.map(item=>
     '<tr><td>'+esc(dateTime(item.at))+'</td><td>'+esc(item.tool||item.method)+'</td><td>'+

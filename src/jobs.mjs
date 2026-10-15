@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { connect } from 'node:net';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, readdir, writeFile, unlink, access } from 'node:fs/promises';
+import { mkdir, open, readFile, readdir, writeFile, unlink, access, appendFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -10,6 +10,7 @@ import { atomicJSON, readJSON, requireInteger, scopedPath } from './common.mjs';
 import { executionEnvironment } from './environment.mjs';
 import { currentTrace, tracePoint } from './trace.mjs';
 import { headUtf8, tailUtf8 } from './head-tail.mjs';
+import {runnerRequest} from './runner-ipc.mjs';
 
 const workerPath = fileURLToPath(new URL('./job-worker.mjs', import.meta.url));
 const terminalStates = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
@@ -36,14 +37,15 @@ export function looksLikePrompt(output=''){
 }
 
 export class Jobs {
-  constructor({ workspace, dataRoot, maxJobs = 4, maxJobLogBytes = 16 * 1024 * 1024, executionUid, executionGid, executionHome, executionEnv }) {
+  constructor({ workspace, dataRoot, maxJobs = 4, maxJobLogBytes = 16 * 1024 * 1024, executionUid, executionGid, executionHome, executionEnv, runnerSocket }) {
     this.workspace = workspace;
     this.root = path.join(dataRoot, 'jobs');
     this.activeDir = path.join(this.root, 'active');
     this.maxJobs = maxJobs;
     this.maxJobLogBytes = maxJobLogBytes;
     this.settingsFile = path.join(dataRoot, 'admin-settings.json');
-    Object.assign(this, { executionUid, executionGid, executionHome, executionEnv });
+    this.indexFile=path.join(this.root,'recent-jobs.log');
+    Object.assign(this, { executionUid, executionGid, executionHome, executionEnv, runnerSocket });
     this.launchQueue = Promise.resolve();
   }
 
@@ -54,7 +56,7 @@ export class Jobs {
     // Concurrent initializers are harmless: individual marker creation is
     // exclusive, and both resolve status from durable state.json.
     const ready = path.join(this.activeDir, '.ready');
-    try { await readFile(ready); return; }
+    try { await readFile(ready); await this.ensureRecentIndex();return; }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
     const ids = (await readdir(this.root)).filter(id => validID.test(id));
     for (const id of ids) {
@@ -66,6 +68,45 @@ export class Jobs {
     }
     try { await writeFile(ready, '1', {flag:'wx',mode:0o600}); }
     catch (error) { if (error.code !== 'EEXIST') throw error; }
+    await this.ensureRecentIndex();
+  }
+
+  async ensureRecentIndex(){
+    try{await access(this.indexFile);return}catch(e){if(e.code!=='ENOENT')throw e}
+    // One-time historical migration only, never scan all finished job JSON
+    // for routine pagination. Another initializer may create the index first.
+    const previous=await this.list();
+    const text=previous.slice().reverse().map(item=>item.id).join('\n')+'\n';
+    try{await writeFile(this.indexFile,text,{flag:'wx',mode:0o600})}
+    catch(e){if(e.code!=='EEXIST')throw e}
+  }
+
+  async recent({limit=50,cursor}={}){
+    requireInteger(limit,50,1,200,'limit');
+    const total=(await readdir(this.root)).filter(x=>validID.test(x)).length;
+    let file;try{file=await open(this.indexFile,'r')}
+    catch(e){if(e.code==='ENOENT')return null;throw e}
+    let text;
+    try{
+      const size=(await file.stat()).size;
+      const readSize=Math.min(size,1024*1024);
+      const bytes=Buffer.alloc(readSize);
+      const result=await file.read(bytes,0,readSize,size-readSize);
+      text=bytes.subarray(0,result.bytesRead).toString('utf8');
+      if(size>readSize)text=text.slice(text.indexOf('\n')+1);
+    }finally{await file.close()}
+    const ids=text.split('\n').filter(id=>validID.test(id)).reverse();
+    const unique=[...new Set(ids)];
+    const from=cursor?unique.indexOf(cursor)+1:0;
+    if(cursor&&from===0)throw Error('Unknown recent job cursor; refresh job_list');
+    const selected=unique.slice(from,from+limit);
+    const jobs=[];
+    for(const id of selected){
+      try{jobs.push(compactJob(await this.status(id)))}
+      catch(e){if(e.code!=='ENOENT')throw e}
+    }
+    return {jobs,total,next_cursor:from+selected.length<unique.length?selected.at(-1):null,
+      recent_index_limited:unique.length<total};
   }
 
   async active() {
@@ -140,7 +181,9 @@ export class Jobs {
     // A longer process is still a durable job and returns its job_id.
     const wait = requireInteger(args.wait_ms, 500, 0, 10000, 'wait_ms');
     const maxBytes = requireInteger(args.max_bytes, 16384, 256, 65536, 'max_bytes');
-    delete args.wait_ms; delete args.max_bytes;
+    const previewMode=args.preview_mode||'full';
+    if(!['full','delta','none'].includes(previewMode))throw Error('preview_mode must be full, delta or none');
+    delete args.wait_ms; delete args.max_bytes; delete args.preview_mode;
     if (args.command !== undefined) {
       if (args.argv !== undefined || typeof args.command !== 'string' || !args.command) throw new Error('Provide exactly one of argv or command');
       args.argv = ['bash', '--noprofile', '--norc', '-c', args.command]; delete args.command;
@@ -171,7 +214,7 @@ export class Jobs {
     const deadline = Date.now() + wait;
     let result;
     do {
-      result = await this.readOnce({job_id:job.id, max_bytes:maxBytes});
+      result = await this.readOnce({job_id:job.id, max_bytes:maxBytes, preview_mode:previewMode});
       if (terminalStates.has(result.status) || Date.now() >= deadline) break;
       // Poll more frequently than the old 100ms granularity for short commands;
       // never wait out the remaining budget after a terminal result.
@@ -183,6 +226,10 @@ export class Jobs {
 
   async page({limit=50,cursor, status, cwd} = {}) {
     requireInteger(limit,50,1,200,'limit');
+    if(!status&&!cwd){
+      const recent=await this.recent({limit,cursor});
+      if(recent)return recent;
+    }
     let all=await this.list();
     if(status !== undefined && !['active',...terminalStates].includes(status))throw new Error('Invalid status filter');
     if(status)all=all.filter(j=>status==='active'?!terminalStates.has(j.status):j.status===status);
@@ -240,7 +287,20 @@ export class Jobs {
     const metadata = { ...(request_id ? {request_id} : {}), ...(trace_id ? { trace_id } : {}), ...(batch_execution_id ? { batch_execution_id, batch_step_id } : {}), ...(helper ? { job_kind } : {}), ...(tty ? {tty:true} : {}) };
     await atomicJSON(path.join(dir, 'spec.json'), { argv, cwd: directory, env, timeout_seconds: timeout, stdin, tty, max_log_bytes:maxLogBytes });
     await atomicJSON(path.join(dir, 'state.json'), { id, argv, cwd, status: 'queued', created_at: created, exit_code: null, ...metadata });
+    await appendFile(this.indexFile,id+'\n',{mode:0o600});
     await writeFile(path.join(this.activeDir,id), '', {flag:'wx',mode:0o600});
+    if(this.runnerSocket){
+      // The sibling runner owns the process cgroup. Never fall back to a
+      // control-plane spawn if it is offline: keep the HTTP server responsive.
+      try{
+        await runnerRequest(this.runnerSocket,{op:'job',id},{timeoutMs:10000});
+      }catch(e){
+        // An IPC timeout after spawn is ambiguous. Keep the reservation and
+        // ID rather than silently replaying a potentially mutating command.
+        throw new Error('Isolated job launch unconfirmed ('+id+'): '+e.message+
+          '. Inspect job_list/job_read with the same request_id; do not resubmit blindly.');
+      }
+    }else{
     const worker = spawn(process.execPath, [workerPath, dir], {
       detached: true,
       stdio: 'ignore',
@@ -258,6 +318,7 @@ export class Jobs {
     const starttime = await processIdentity(worker.pid);
     await atomicJSON(path.join(dir, 'owner.json'), { pid: worker.pid, starttime });
     worker.unref();
+    }
     return this.status(id);
   }
 
@@ -276,7 +337,8 @@ export class Jobs {
     } while (true);
   }
 
-  async readOnce({ job_id, offset = 0, max_bytes, tail_lines }) {
+  async readOnce({ job_id, offset = 0, max_bytes, tail_lines, preview_mode='full' }) {
+    if(!['full','delta','none'].includes(preview_mode))throw Error('preview_mode must be full, delta or none');
     if(tail_lines!==undefined)requireInteger(tail_lines,null,1,200,'tail_lines');
     const position = requireInteger(offset, 0, 0, Number.MAX_SAFE_INTEGER, 'offset');
     const limit = requireInteger(max_bytes, 32768, 1, 262144, 'max_bytes');
@@ -297,7 +359,7 @@ export class Jobs {
       }
       const result = { ...state, output: buffer.subarray(0, end).toString('utf8'), next_offset: position + end, has_more: size > position + end, log_bytes: size };
       const total = state.log_total_bytes ?? (size + (state.dropped_log_bytes ?? 0));
-      if (terminalStates.has(state.status) && total > limit) {
+      if (preview_mode!=='none' && terminalStates.has(state.status) && total > limit) {
         // The additional preview does not affect next_offset and pagination.
         const budget = Math.min(limit, 32768);
         const headBudget = Math.floor(budget / 2);
@@ -327,7 +389,33 @@ export class Jobs {
           const ending = tailUtf8(tail);
           const preserved = Buffer.byteLength(beginning) + Buffer.byteLength(ending);
           const omitted = Math.max(0, total - preserved);
-          result.output_preview = beginning + '\n... ' + omitted + ' bytes omitted ...\n' + ending;
+          if(preview_mode==='delta'){
+            // Current output already contains bytes [offset,next_offset).
+            // Avoid repeating the head when reading from byte zero. For
+            // nontruncated logs remove tail overlap with the requested page.
+            const uncovered=(bytes,base)=>{
+              const pageEnd=position+end;
+              const sliceEnd=base+bytes.length;
+              if(pageEnd<=base||position>=sliceEnd)return tailUtf8(bytes);
+              const pieces=[];
+              if(position>base){
+                const count=Math.min(bytes.length,position-base);
+                if(count>0)pieces.push(headUtf8(bytes.subarray(0,count)));
+              }
+              if(pageEnd<sliceEnd){
+                const begin=Math.max(0,pageEnd-base);
+                if(begin<bytes.length)pieces.push(tailUtf8(bytes.subarray(begin)));
+              }
+              return pieces.filter(Boolean).join(' ... ');
+            };
+            const headExtra=uncovered(head.subarray(0,start.bytesRead),0);
+            // Truncated logs preserve the true terminal tail in output.tail,
+            // which is NOT a byte range of the capped output.log.
+            const tailExtra=state.log_truncated?ending:uncovered(tail,size-tail.length);
+            result.output_preview=[headExtra,tailExtra].filter(Boolean).join('\n... delta tail ...\n');
+            result.preview_mode='delta';
+            result.preview_head_in_output=position===0;
+          }else result.output_preview = beginning + '\n... ' + omitted + ' bytes omitted ...\n' + ending;
           result.preview_omitted_bytes = omitted;
         } else {
           result.preview_tail_unavailable = true;
@@ -453,13 +541,13 @@ export const jobTools = [
   {
     name: 'job_start', title: 'Start a durable development job',
     description: 'Preferred single-command execution. Optional tty:true uses util-linux script and requires interactive/legacy profile for job_input.  Default wait_ms=500: completed foreground commands return status, exit_code and output in one call; longer commands return their durable job_id for job_read. Set wait_ms=0 for long/background jobs when immediate control is needed. Use request_id for safe retries. command is an explicit clean Bash string, or supply argv. Run argv in a workspace directory. Returns promptly with a job ID. The independent worker keeps running across MCP HTTP-server restarts. Poll job_read until terminal status; this does not automatically wake ChatGPT. For shell syntax explicitly use ["bash", "--noprofile", "--norc", "-c", "..."] . stdin is closed for ordinary commands; tty:true uses an optional PTY with interactive/legacy profile and job_input. Large terminal logs include output_preview without changing pagination.',
-    inputSchema: { type: 'object', properties: { command: {type:'string'}, request_id: {type:'string'}, tty: {type:'boolean',description:'Allocate a real PTY via util-linux script; job_input is enabled only under interactive/legacy tool profile.'}, wait_ms: {type:'integer',minimum:0,maximum:10000}, max_bytes: {type:'integer',minimum:256,maximum:65536}, argv: { type: 'array', minItems: 1, items: { type: 'string' } }, cwd: { type: 'string', default: '.' }, env: { type: 'object', additionalProperties: { type: 'string' } }, timeout_seconds: { type: 'integer', minimum: 1, maximum: 86400 } }, additionalProperties: false },
+    inputSchema: { type: 'object', properties: { command: {type:'string'}, request_id: {type:'string'}, tty: {type:'boolean',description:'Allocate a real PTY via util-linux script; job_input is enabled only under interactive/legacy tool profile.'}, wait_ms: {type:'integer',minimum:0,maximum:10000}, max_bytes: {type:'integer',minimum:256,maximum:65536}, preview_mode:{type:'string',enum:['full','delta','none'],description:'Full preview is backward-compatible. delta avoids repeating output head; none omits preview.'}, argv: { type: 'array', minItems: 1, items: { type: 'string' } }, cwd: { type: 'string', default: '.' }, env: { type: 'object', additionalProperties: { type: 'string' } }, timeout_seconds: { type: 'integer', minimum: 1, maximum: 86400 } }, additionalProperties: false },
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }
   },
   {
     name: 'job_read', title: 'Read job status and incremental logs',
     description: 'Read durable status and a bounded log chunk; optional tail_lines returns the most recent lines without changing the byte cursor. PTY sessions include heuristic prompt/awaiting-input indicators. On terminal long jobs output_preview retains head and tail, even past the log cap. (up to 3 extra bytes to keep UTF-8 intact). Command arguments are omitted unless include_command is true. Reuse next_offset as offset. While queued/running set wait_ms=1000..10000 to wait briefly for output or completion instead of busy polling. Terminal states: succeeded, failed, cancelled, interrupted. Check exit_code and drain logs while has_more is true; empty output does not mean success. Logs are stdout and stderr combined.',
-    inputSchema: { type: 'object', properties: { include_command: {type:'boolean'}, job_id: { type: 'string' }, offset: { type: 'integer', minimum: 0 }, max_bytes: { type: 'integer', minimum: 1, maximum: 262144 }, tail_lines:{type:'integer',minimum:1,maximum:200}, wait_ms: { type: 'integer', minimum: 0, maximum: 10000 } }, required: ['job_id'], additionalProperties: false },
+    inputSchema: { type: 'object', properties: { include_command: {type:'boolean'}, job_id: { type: 'string' }, offset: { type: 'integer', minimum: 0 }, max_bytes: { type: 'integer', minimum: 1, maximum: 262144 }, tail_lines:{type:'integer',minimum:1,maximum:200}, preview_mode:{type:'string',enum:['full','delta','none']}, wait_ms: { type: 'integer', minimum: 0, maximum: 10000 } }, required: ['job_id'], additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: false }
   },
   {

@@ -3,7 +3,7 @@ export const serverInstructions = `Remote Linux development workspace, NOT ChatG
 export const guideTool = {
   name:'dev_get_guide',title:'Inspect live tool catalog and development workflow',
   description:'Start here: workspace root, current catalog fingerprint and tool names, optional bridge health, workflow and resumable-job rules. Compares server capabilities, not the client frozen snapshot. Does not run user commands.',
-  inputSchema:{type:'object',properties:{include_diagnostics:{type:'boolean'},trace_id:{type:'string'},limit:{type:'integer',minimum:1,maximum:50}},additionalProperties:false},
+  inputSchema:{type:'object',properties:{include_diagnostics:{type:'boolean'},diagnostics_mode:{type:'string',enum:['summary','full']},cursor:{type:'string',maxLength:128},trace_id:{type:'string'},limit:{type:'integer',minimum:1,maximum:50}},additionalProperties:false},
   annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}
 };
 export function developmentGuide({workspace,upstreamTools=[],executionEnv={},containerBuildSocket,catalog}) {

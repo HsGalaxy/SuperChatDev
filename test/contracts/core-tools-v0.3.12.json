@@ -1,0 +1,22 @@
+{
+  "version": "0.3.12",
+  "hashes": {
+    "dev_get_guide": "14dc66749be76bf205e4ba5ee1503c5c4ee0007087440e602277490cec27ab10",
+    "file_import": "85bf864240fa1392275f8fe448fd640fcdcd0777a3f4ce3feb8d3833f3c27bb1",
+    "file_unpack": "0cedf16ed80bffe516b4fdd90f6b7bf0382d858a35a0b565fd31f0b36329332d",
+    "file_export": "e3d3b0e25746fe0a49ae46fcb2874dc275d8793085e47a623f5ead44b6e22ad0",
+    "fs_list": "4f96afd62ebffc3a7ed64a9fe1e5808f11d7a7eb6ec3a1f444ceae0479aecf21",
+    "fs_read": "f1d78770bd15cabd9540c4d8a17a25c607c0898948aa124ecfb85d76d2177f45",
+    "fs_search": "5535829a7a3780a460020f4d76c9e16c5baec4fa4fafb68a4e4b4f0b9888f591",
+    "exec": "6cb4e7a398bdde175b5b5e6e44171f0ae4934ac2f7b09e751cffa528070b7e86",
+    "job_start": "24f8f613abffdf29961735e8e9b481b1220f2c9de01b298ed000197530d5c812",
+    "job_read": "86b4cce677d57da4e48733ebd3d6887e5d5964f738e97a5908552e9f907f951b",
+    "job_list": "0a770e41949da5eafe16795beeb2ae545a994f907063857887c0c09447230942",
+    "job_cancel": "f9297231645ca4eafa2a8550fdbcbd184b56eac1d2a267b5e85b31821238c49b",
+    "workspace_execute": "6adf29472cd9ff7c0077901f3e71436d7b93bc968a4771dd34a25dda76a5e56e",
+    "workspace_read": "bdd9b589451f8bc949ef69c5ed6e58d230594d583421fe5e80b69e290898579b",
+    "workspace_list": "7c308e9b6a5f0f6738660bc1ce543f114f17d577b5172001ded4ef507c32acf0",
+    "workspace_cancel": "aa20fd6eea9f5a60b7dd29566cc4c84002b23861c6864f1cc83244389e18c0d2",
+    "workspace_review": "410e3feebb2f7432fafa22b070e4990c68b74829f1d27ff7cb98909898fb1794"
+  }
+}

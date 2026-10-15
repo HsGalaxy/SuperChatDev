@@ -36,6 +36,12 @@ ETC = Path("/etc/chatgpt-dev-mcp")
 ENV_FILE = ETC / "service.env"
 UNIT = Path("/etc/systemd/system/chatgpt-dev-mcp.service")
 SERVICE = "chatgpt-dev-mcp.service"
+RESOURCE_DROPIN = Path("/etc/systemd/system/chatgpt-dev-mcp.service.d/50-superchatdev-resources.conf")
+RUNNER_UNIT = Path("/etc/systemd/system/chatgpt-dev-mcp-runner.service")
+RUNNER_SERVICE = "chatgpt-dev-mcp-runner.service"
+RUNNER_ENV = ETC / "runner.env"
+RUNNER_SOCKET = VAR / "state" / "job-runner.sock"
+
 BACKUPS = Path("/var/backups/chatgpt-dev-mcp-installer")
 CADDY = Path("/etc/caddy/Caddyfile")
 SITE = Path("/etc/caddy/sites-enabled/chatgpt-dev-mcp.caddy")
@@ -402,7 +408,7 @@ def env_settings(domain: str, port: int, runner, dc: bool, owner_pass: str, admi
         ], separators=(",", ":"))
     return values
 
-def unit_text(node: str) -> str:
+def unit_text(node: str, isolated: bool = False) -> str:
     if not node.startswith(("/usr/bin/", "/usr/local/bin/")) or any(c.isspace() for c in node):
         raise InstallError("Node executable must have an absolute, system-accessible path.")
     return f"""# Managed by Core MCP installer. Preserve this file during routine upgrades.
@@ -437,13 +443,144 @@ RestrictSUIDSGID=true
 LockPersonality=true
 ReadWritePaths={VAR}
 InaccessiblePaths={ETC}
-TasksMax=256
-MemoryMax=2G
+TasksMax={512 if isolated else 1024}
+MemoryMax={ '2G' if isolated else '4G' }
+CPUWeight=200
 LimitNOFILE=8192
 
 [Install]
 WantedBy=multi-user.target
 """
+
+def resource_limits_text(isolated=False):
+    tasks,memory=(512,"2G") if isolated else (1024,"4G")
+    return f"# SuperChatDev managed resource limits. Restore backup to roll back.\n[Service]\nTasksMax={tasks}\nMemoryMax={memory}\nCPUWeight=200\n"
+
+
+def runner_unit_text(node):
+    if not node.startswith(("/usr/bin/","/usr/local/bin/")) or any(c.isspace() for c in node):
+        raise InstallError("Runner Node executable must be a system path")
+    return f"""# SuperChatDev managed isolated job runner (opt-in).
+[Unit]
+Description=SuperChatDev isolated development job runner
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User={OWNER}
+Group={RUNNER}
+WorkingDirectory={APP}
+EnvironmentFile={RUNNER_ENV}
+ExecStart={node} {APP}/src/isolated-runner.mjs
+Restart=on-failure
+RestartSec=5
+UMask=0007
+KillMode=process
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_KILL
+AmbientCapabilities=CAP_SETUID CAP_SETGID CAP_KILL
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths={VAR}
+InaccessiblePaths={ETC}
+TasksMax=768
+MemoryMax=4G
+CPUWeight=50
+LimitNOFILE=8192
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+
+def original_env_values():
+    # Parse ONLY execution identity; never log credentials in service.env.
+    entries={}
+    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        if "=" not in line or line.lstrip().startswith("#"):continue
+        name,value=line.split("=",1)
+        if name in {"EXECUTION_UID","EXECUTION_GID","EXECUTION_HOME","EXECUTION_ENV"}:
+            entries[name]=json.loads(value) if value.startswith('"') else value
+    required={"EXECUTION_UID","EXECUTION_GID","EXECUTION_HOME","EXECUTION_ENV"}
+    if not required.issubset(entries):
+        raise InstallError("Execution identity missing in existing env; cannot configure isolated runner")
+    return entries
+
+
+def snapshot_service_changes(backup):
+    saved=backup/"service-config"
+    saved.mkdir(mode=0o700)
+    paths={"unit":UNIT,"service-env":ENV_FILE,"dropin":RESOURCE_DROPIN,
+           "runner-unit":RUNNER_UNIT,"runner-env":RUNNER_ENV}
+    found={}
+    for name,original in paths.items():
+        if original.is_symlink():raise InstallError("Refuse symlinked service path: "+str(original))
+        found[name]=original.exists()
+        if original.exists():
+            shutil.copy2(original,saved/name)
+            os.chmod(saved/name,0o600)
+    atomic_write(saved/"presence.json",json.dumps(found))
+    return saved
+
+
+def restore_service_changes(backup):
+    saved=backup/"service-config"
+    if not (saved/"presence.json").exists():return
+    present=json.loads((saved/"presence.json").read_text())
+    paths={"unit":UNIT,"service-env":ENV_FILE,"dropin":RESOURCE_DROPIN,
+           "runner-unit":RUNNER_UNIT,"runner-env":RUNNER_ENV}
+    if not present.get("runner-unit") and RUNNER_UNIT.exists():
+        run("systemctl","disable","--now",RUNNER_SERVICE)
+    for name,original in paths.items():
+        if present.get(name):
+            atomic_write(original,(saved/name).read_text(encoding="utf-8"),0o600 if "env" in name else 0o644)
+        else:
+            original.unlink(missing_ok=True)
+    run("systemctl","daemon-reload")
+
+
+def apply_resource_changes(isolated=False):
+    if RESOURCE_DROPIN.is_symlink():raise InstallError("Resource drop-in cannot be a symlink")
+    if RESOURCE_DROPIN.exists() and not RESOURCE_DROPIN.read_text().startswith("# SuperChatDev managed"):
+        raise InstallError("Resource drop-in is user-managed; refusing to overwrite")
+    atomic_write(RESOURCE_DROPIN,resource_limits_text(isolated),0o644)
+
+
+def install_runner_service(node):
+    if RUNNER_UNIT.is_symlink() or RUNNER_ENV.is_symlink():
+        raise InstallError("Runner systemd config cannot be a symlink")
+    if RUNNER_UNIT.exists() and not RUNNER_UNIT.read_text().startswith("# SuperChatDev managed"):
+        raise InstallError("Existing runner unit is not SuperChatDev-managed")
+    env=original_env_values()
+    settings={
+        "JOB_RUNNER_DATA_ROOT":str(VAR/"state"),
+        "JOB_RUNNER_WORKSPACE":str(VAR/"workspace"),
+        "JOB_RUNNER_EXEC_UID":env["EXECUTION_UID"],
+        "JOB_RUNNER_EXEC_GID":env["EXECUTION_GID"],
+        "JOB_RUNNER_EXEC_HOME":env["EXECUTION_HOME"],
+        "JOB_RUNNER_EXEC_ENV":env["EXECUTION_ENV"],
+    }
+    atomic_write(RUNNER_ENV,render_env(settings))
+    atomic_write(RUNNER_UNIT,runner_unit_text(node),0o644)
+    current=ENV_FILE.read_text(encoding="utf-8")
+    if "\nJOB_RUNNER_SOCKET=" in "\n"+current:
+        raise InstallError("Existing JOB_RUNNER_SOCKET must be reconciled before enabling runner")
+    atomic_write(ENV_FILE,current.rstrip()+"\nJOB_RUNNER_SOCKET="+quote_env(str(RUNNER_SOCKET))+"\n")
+    run("systemctl","daemon-reload")
+    run("systemctl","enable","--now",RUNNER_SERVICE)
+    for _ in range(35):
+        if RUNNER_SOCKET.is_socket():return
+        time.sleep(0.1)
+    raise InstallError("Isolated runner did not expose a socket; inspect systemctl status "+RUNNER_SERVICE)
+
 
 def caddy_site(domain: str, port: int) -> str:
     return f"""# Core MCP managed reverse proxy; OAuth and signed URLs are not access-logged.
@@ -609,7 +746,10 @@ def start_service(port):
     run("systemctl","restart",SERVICE)
     check_backend(port)
 
-def upgrade():
+def upgrade(args=None):
+    # Preserve the existing Python installer API used by older bootstrap tests.
+    if args is None:
+        args=argparse.Namespace(apply_resource_limits=False,enable_isolated_runner=False)
     if not UNIT.exists() or not ENV_FILE.exists():
         raise InstallError("Cannot upgrade without existing unit and environment. Use fresh install.")
     if node_version()<22:raise InstallError("Node.js >=22 is required.")
@@ -620,14 +760,30 @@ def upgrade():
             port=valid_port(int(line[5:].strip().strip('"\u0027')))
     backup = make_backup()
     backup_state(backup)
-    step("Upgrade runtime only; preserve users, proxy, credentials and workspace")
+    modify_service=args.apply_resource_limits or args.enable_isolated_runner
+    if modify_service:snapshot_service_changes(backup)
+    step("Upgrade runtime; preserve proxy, credentials and workspace; resource migration is opt-in")
     installed=False
     try:
         install_release(backup, 'upgrade'); installed=True
+        if args.apply_resource_limits or args.enable_isolated_runner:
+            apply_resource_changes(isolated=args.enable_isolated_runner)
+        if args.enable_isolated_runner:
+            if RUNNER_UNIT.exists():
+                raise InstallError("Runner unit already exists: use regular upgrade; do not overwrite its configuration")
+            node=str(Path(shutil.which("node") or "").resolve())
+            install_runner_service(node)
+        elif RUNNER_UNIT.exists() and RUNNER_UNIT.read_text().startswith("# SuperChatDev managed"):
+            run("systemctl","restart",RUNNER_SERVICE)
+        if modify_service:run("systemctl","daemon-reload")
         run("systemctl","restart",SERVICE)
         check_backend(port)
     except Exception:
-        if installed or (backup/"runtime/rollback.json").exists():
+        if modify_service:
+            step("Service configuration failure: restore original systemd settings")
+            restore_service_changes(backup)
+        runtime_changed=installed or (backup/"runtime/rollback.json").exists()
+        if runtime_changed:
             step("Health failure: roll back runtime files")
             rollback_release(backup)
             run("systemctl","restart",SERVICE)
@@ -666,7 +822,9 @@ def fresh(args):
         atomic_write(ENV_FILE,render_env(env_settings(domain,port,runner,args.with_dc,owner_pass,admin_pass,bootstrap_quick=args.proxy=='cloudflare' and args.cloudflare_mode=='quick',allow_local_admin=args.proxy=='cloudflare')))
         node=shutil.which("node") or ""
         node=str(Path(node).resolve())
-        atomic_write(UNIT,unit_text(node),0o644)
+        atomic_write(UNIT,unit_text(node,isolated=getattr(args,'enable_isolated_runner',False)),0o644)
+        if getattr(args,'enable_isolated_runner',False):
+            install_runner_service(node)
         step("Start protected systemd service and verify local /health")
         start_service(port); started=True
         if args.proxy=="caddy":
@@ -689,6 +847,13 @@ def fresh(args):
                 run("systemctl","daemon-reload")
             except Exception as error:
                 cleanup_errors.append(str(error))
+        if getattr(args,'enable_isolated_runner',False):
+            try:
+                if RUNNER_UNIT.exists():run("systemctl","disable","--now",RUNNER_SERVICE)
+                RUNNER_UNIT.unlink(missing_ok=True)
+                RUNNER_ENV.unlink(missing_ok=True)
+                run("systemctl","daemon-reload")
+            except Exception as error:cleanup_errors.append(str(error))
         if installed or (backup/"runtime/rollback.json").exists():
             try:
                 rollback_release(backup)
@@ -754,6 +919,10 @@ def main():
                         help="Cloudflare Quick testing or remotely-managed named tunnel")
     parser.add_argument("--auto-cloudflared",action="store_true",
                         help="Explicitly opt in to installing cloudflared only when using Cloudflare")
+    parser.add_argument("--apply-resource-limits",action="store_true",
+                        help="Explicitly migrate existing systemd TasksMax/MemoryMax via backed-up managed drop-in")
+    parser.add_argument("--enable-isolated-runner",action="store_true",
+                        help="Explicit opt-in: create separate sibling systemd runner service and private Unix IPC socket")
     parser.add_argument("--install-cloudflared",action="store_true",
                         help="Only install the optional cloudflared binary via signed Cloudflare apt repo")
     parser.add_argument("--port",type=int,default=18787,
@@ -857,6 +1026,10 @@ def main():
         print(tr("Will create two unprivileged service accounts, protected credentials and persistent workspace."))
     else:
         print(tr("Upgrade runtime only; keep existing systemd unit, credentials, state and proxy."))
+        if args.apply_resource_limits:
+            print("Opt-in TasksMax=1024 / MemoryMax=4G (or control 512 / 2G if isolated Runner enabled), with rollback backup")
+        if args.enable_isolated_runner:
+            print("Opt-in sibling Runner: TasksMax=768, MemoryMax=4G, private Unix socket; no production mutation during dry-run")
     if args.dry_run:
         print(tr("DRY RUN: No packages, users, configs, files or services were changed."))
         return 0
@@ -867,7 +1040,7 @@ def main():
     if not args.yes and not confirm(tr("Proceed with privileged changes?"),True):
         print(tr("Cancelled."));return 0
     if args.mode=="fresh": fresh(args)
-    else: upgrade()
+    else: upgrade(args)
     return 0
 
 if __name__=="__main__":

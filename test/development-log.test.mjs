@@ -65,7 +65,7 @@ test('Admin development log route is authenticated, read-only and available in s
  assert.equal(response.status,200);
  assert.equal(response.headers.get('cache-control'),'no-store');
  const data=await response.json();
- assert.equal(data.version,'0.3.11');
+ assert.equal(data.version,'0.3.12');
  assert.ok(data.entries.length>=8);
  assert.ok(data.entries.some(e=>e.version==='0.3.10' && e.items.some(x=>x.includes('Development Log'))));
  assert.notEqual((await fetch(base+'/admin/api/development-log',{method:'POST',headers:{Cookie:cookie}})).status,200);
@@ -73,7 +73,7 @@ test('Admin development log route is authenticated, read-only and available in s
 
 test('release integrity records new changelog source',async()=>{
  const manifest=JSON.parse(await readFile(path.join(ROOT,'RELEASE.json'),'utf8'));
- assert.equal(manifest.version,'0.3.11');
+ assert.equal(manifest.version,'0.3.12');
  assert.match(manifest.files['CHANGELOG.md'],/^[a-f0-9]{64}$/);
  assert.match(manifest.files['src/development-log.mjs'],/^[a-f0-9]{64}$/);
 });

@@ -246,7 +246,15 @@ export class Files {
       const uri = `artifact://${id}/${encodeURIComponent(name)}`;
       const result = { ...metadata, resource_uri: uri, expires_at: new Date(expires * 1000).toISOString(), resource_read_available: metadata.bytes <= this.maxResourceBytes };
       if (this.publicBaseURL) result.download_url = `${this.publicBaseURL}/artifacts/${id}?expires=${expires}&token=${token}`;
-      return toolResult(result, { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }, { type: 'resource_link', uri, name, mimeType, size: metadata.bytes }, ...(result.download_url ? [{ type: 'resource_link', uri: result.download_url, name, mimeType, size: metadata.bytes }] : [])] });
+      // Only artifact:// within the read limit is an MCP ResourceLink.
+      // Signed HTTPS remains available for direct download in text/JSON.
+      const directDownload = result.download_url
+        ? '\nDirect HTTPS download (signed, expires '+result.expires_at+'): '+result.download_url
+        : '';
+      const content = [{type:'text',text:JSON.stringify(result,null,2)+directDownload}];
+      if(result.resource_read_available)
+        content.push({type:'resource_link',uri,name,mimeType,size:metadata.bytes});
+      return toolResult(result,{content});
     } catch (error) { await rm(dir, { recursive: true, force: true }); throw error; }
   }
 
@@ -315,7 +323,7 @@ export class Files {
   async listResources() {
     const ids = (await readdir(this.artifactRoot)).filter(id => /^[0-9a-f-]{36}$/.test(id));
     const artifacts = await Promise.all(ids.map(id => this.artifact(id)));
-    return { resources: artifacts.map(({ id, name, mimeType, bytes }) => ({ uri: `artifact://${id}/${encodeURIComponent(name)}`, name, mimeType, size: bytes })) };
+    return { resources: artifacts.filter(item=>item.bytes<=this.maxResourceBytes).map(({ id, name, mimeType, bytes }) => ({ uri: `artifact://${id}/${encodeURIComponent(name)}`, name, mimeType, size: bytes })) };
   }
 }
 

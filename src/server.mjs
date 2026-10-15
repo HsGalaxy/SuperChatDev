@@ -67,7 +67,7 @@ export async function createApp(config) {
   const oauth = new OAuth({ ...config, dataRoot });
   await oauth.init();
   const upstream = config.upstreamArgv ? new ManagedUpstream(config.upstreamArgv, { ...config, dataRoot, workspace }) : null;
-  if (upstream) await upstream.init();
+  if (upstream) await upstream.init({connect:false}); // Cache-only; Core must not spawn Desktop Commander.
   const localTools = [guideTool, ...fileTools, ...codeTools, quickExecTool, ...jobTools, ...workspaceTools, reviewTool];
   const localNames = new Set(localTools.map(tool => tool.name));
   const upstreamTools = [...(upstream?.tools || [])].filter(tool=>!localNames.has(tool.name));
@@ -83,6 +83,7 @@ export async function createApp(config) {
       config.publicBaseURL=url||tunnels.originalBase;
       config.httpOrigins=[...new Set([...originalOrigins,...(url?[url]:[])])];
       oauth.base=config.publicBaseURL;
+      files.publicBaseURL=config.publicBaseURL;
       admin.config.publicBaseURL=config.publicBaseURL;
     },
     ...(config.tunnelOptions||{})
@@ -96,9 +97,18 @@ export async function createApp(config) {
     upstreamNames.clear();items.forEach(t=>upstreamNames.add(t.name));
     tools.splice(0,tools.length,...localTools,...items);admin.names=new Set(tools.map(t=>t.name));
   };
+  const syncUpstreamProfile=async (settings=admin.settings)=>{
+    if(!upstream)return;
+    const wantDC=!['core','native-interactive'].includes(settings.toolProfile) &&
+      settings.permissions.desktopCommander && settings.permissions.filesystemRead;
+    if(wantDC)await upstream.resume();
+    else upstream.pause();
+  };
+  admin.onUpstreamPolicyChange=syncUpstreamProfile;
+  await syncUpstreamProfile();
   const catalog=()=>{
     const visible=admin.visibleTools();
-    return {version:'0.3.11',profile:admin.settings.toolProfile,
+    return {version:'0.3.12',profile:admin.settings.toolProfile,
       sha256:createHash('sha256').update(JSON.stringify(visible)).digest('hex'),
       visible_tools:visible.map(t=>t.name),registered_count:tools.length,visible_count:visible.length,
       upstream:upstream?.status() || {configured:false,connected:false},
@@ -115,7 +125,7 @@ export async function createApp(config) {
       tracePoint('dispatch.begin', {argument_fields:Object.keys(params.arguments||{}).length});
       return await dispatchTool(params);
     });
-    if (method === 'initialize') return { protocolVersion: versions.includes(params.protocolVersion) ? params.protocolVersion : '2025-03-26', capabilities, serverInfo: { name: 'chatgpt-dev-mcp', version: '0.3.11' }, instructions: serverInstructions };
+    if (method === 'initialize') return { protocolVersion: versions.includes(params.protocolVersion) ? params.protocolVersion : '2025-03-26', capabilities, serverInfo: { name: 'chatgpt-dev-mcp', version: '0.3.12' }, instructions: serverInstructions };
     if (method === 'ping') return {};
     if (method === 'tools/list') return { tools: admin.visibleTools(), _meta: {'starix/catalog_sha256':catalog().sha256} };
     if (method === 'resources/list') {
@@ -143,11 +153,19 @@ export async function createApp(config) {
           case 'dev_get_guide': {
             const guide = developmentGuide({ workspace, upstreamTools:upstreamTools.filter(t=>admin.allowed(t.name)), executionEnv: config.executionEnv, containerBuildSocket: config.containerBuildSocket, catalog:catalog() });
             if (args.include_diagnostics || args.trace_id) {
-              guide.diagnostics = await traces.read({ trace_id: args.trace_id, limit: args.limit });
-              const allJobs = await jobs.list();
-              const executions = (await workspaceBatches.list()).executions;
-              guide.diagnostics.jobs = allJobs.filter(job => !args.trace_id || job.trace_id === args.trace_id).map(({ id, trace_id, batch_execution_id, batch_step_id, job_kind, status, exit_code, created_at, finished_at }) => ({ id, trace_id, batch_execution_id, batch_step_id, kind: job_kind || 'command', status, exit_code, created_at, finished_at })).slice(0, 50);
-              guide.diagnostics.executions = executions.filter(batch => !args.trace_id || batch.trace_id === args.trace_id).slice(0, 50);
+              const full=args.diagnostics_mode==='full'||Boolean(args.trace_id);
+              guide.diagnostics=full
+                ? await traces.read({trace_id:args.trace_id,limit:args.limit??10})
+                : await traces.peek({limit:args.limit??10,cursor:args.cursor});
+              const page=await jobs.page({limit:full?50:10});
+              const batchPage=await workspaceBatches.list({limit:full?50:10});
+              const executions=batchPage.executions;
+              guide.diagnostics.jobs=page.jobs.filter(x=>!args.trace_id||x.trace_id===args.trace_id)
+                .slice(0,full?50:10);
+              guide.diagnostics.executions=executions.filter(x=>!args.trace_id||x.trace_id===args.trace_id)
+                .slice(0,full?50:10);
+              guide.diagnostics.jobs_has_more=Boolean(page.next_cursor);
+              guide.diagnostics.executions_has_more=Boolean(batchPage.next_cursor);
             }
             return toolResult(guide);
           }
@@ -169,7 +187,7 @@ export async function createApp(config) {
           case 'job_cancel': return toolResult(compactJob(await jobs.cancel(args)));
           case 'workspace_execute': return toolResult(await workspaceBatches.execute(args));
           case 'workspace_read': return toolResult(await workspaceBatches.read(args));
-          case 'workspace_list': return toolResult(await workspaceBatches.list());
+          case 'workspace_list': return toolResult(await workspaceBatches.list(args));
           case 'workspace_cancel': return toolResult(await workspaceBatches.cancel(args));
           default:
             if (upstreamNames.has(params.name)) return clarifyProcessResult(params.name, args, await upstream.request('tools/call', params), upstream);
@@ -213,7 +231,7 @@ export async function createApp(config) {
       // transport's DNS-rebinding protection and other endpoints strict.
       const opaqueAuthorizationOrigin = req.headers.origin === 'null' && url.pathname === '/oauth/authorize' && ['GET', 'POST'].includes(req.method);
       if (req.headers.origin && !config.httpOrigins?.includes(req.headers.origin) && !opaqueAuthorizationOrigin) { json(res, 403, { error: 'Origin not allowed' }); return; }
-      if (url.pathname === '/health' && req.method === 'GET') { json(res, 200, { ok: true, version:'0.3.11' }); return; }
+      if (url.pathname === '/health' && req.method === 'GET') { json(res, 200, { ok: true, version:'0.3.12' }); return; }
       if (await admin.handle(req, res, url, readBody, json)) return;
       if (await oauth.handle(req, res, url, readBody, json)) return;
       if (url.pathname.startsWith('/artifacts/') && (req.method === 'GET' || req.method === 'HEAD')) {
@@ -318,6 +336,7 @@ export function envConfig(env = process.env) {
     executionHome: env.EXECUTION_HOME,
     executionEnv: validateExecutionEnv(env.EXECUTION_ENV ? JSON.parse(env.EXECUTION_ENV) : {}),
     containerBuildSocket: env.CONTAINER_BUILD_SOCKET,
+    runnerSocket: env.JOB_RUNNER_SOCKET || undefined,
     toolProfile: env.MCP_TOOL_PROFILE || 'core',
     upstreamArgv: env.DESKTOP_COMMANDER_COMMAND ? JSON.parse(env.DESKTOP_COMMANDER_COMMAND) : null,
     host: env.HOST || '127.0.0.1', port: positive('PORT', 8787)

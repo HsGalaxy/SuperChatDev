@@ -65,6 +65,26 @@ export class Traces {
       _meta: { ...result._meta, 'dev/trace_id': trace_id },
       content: [...result.content, { type: 'text', text: `Trace ID: ${trace_id}` }] };
   }
+  async peek({limit=10,cursor}={}){
+    // Bounded number of JSON reads, even with thousands of saved traces.
+    if(!Number.isSafeInteger(limit)||limit<1||limit>50)throw Error('Trace page limit must be 1..50');
+    const names=(await readdir(this.root))
+      .filter(x=>/^\d+-[a-f0-9-]{36}\.json$/.test(x)).sort().reverse();
+    const start=cursor?names.findIndex(x=>x===cursor)+1:0;
+    if(cursor&&start===0)throw Error('Unknown trace pagination cursor');
+    const selected=names.slice(start,start+limit);
+    const calls=[];
+    for(const name of selected){
+      try{calls.push(await readJSON(path.join(this.root,name)))}
+      catch(e){if(e.code!=='ENOENT')throw e}
+    }
+    const calls_by_tool=Object.create(null);
+    for(const call of calls)calls_by_tool[call.tool]=(calls_by_tool[call.tool]||0)+1;
+    return {retention:'Bounded recent page; counts by tool are page-only, not whole history',
+      retained_calls:names.length,calls_by_tool,calls,
+      next_cursor:start+selected.length<names.length?selected.at(-1):null,
+      counts_sample_only:true,mode:'summary'};
+  }
   async read({ trace_id, limit = 10 } = {}) {
     if (trace_id !== undefined && !validID.test(trace_id)) throw new Error('Invalid trace ID');
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) throw new Error('Trace limit must be 1..50');

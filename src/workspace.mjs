@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, open, readdir, writeFile, appendFile, access } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -8,6 +8,7 @@ import { atomicJSON, readJSON, requireInteger, isInside } from './common.mjs';
 import { parsePatch } from './patch.mjs';
 import { currentTrace } from './trace.mjs';
 import { processIdentity } from './jobs.mjs';
+import { runnerRequest } from './runner-ipc.mjs';
 
 export const batchTerminal = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
 const workerPath = fileURLToPath(new URL('./workspace-worker.mjs', import.meta.url));
@@ -158,13 +159,27 @@ export function validatePlan(args) {
 export class Workspace {
   constructor(config, jobs) {
     this.jobs = jobs;
-    this.config = Object.fromEntries(['workspace', 'dataRoot', 'maxJobs', 'maxJobLogBytes', 'executionUid', 'executionGid', 'executionHome', 'executionEnv', 'containerBuildSocket'].map(key => [key, config[key]]));
+    this.config = Object.fromEntries(['workspace', 'dataRoot', 'maxJobs', 'maxJobLogBytes', 'executionUid', 'executionGid', 'executionHome', 'executionEnv', 'containerBuildSocket', 'runnerSocket'].map(key => [key, config[key]]));
     this.root = path.join(config.dataRoot, 'batches');
     this.requests = path.join(config.dataRoot, 'batch-requests');
+    this.indexFile=path.join(this.root,'recent-batches.log');
     this.launchQueue = Promise.resolve();
   }
 
-  async init() { await mkdir(this.root, { recursive: true, mode: 0o700 }); await mkdir(this.requests, { recursive: true, mode: 0o700 }); }
+  async init() {
+    await mkdir(this.root,{recursive:true,mode:0o700});
+    await mkdir(this.requests,{recursive:true,mode:0o700});
+    try{await access(this.indexFile);return}catch(e){if(e.code!=='ENOENT')throw e}
+    const ids=(await readdir(this.root)).filter(x=>/^[a-f0-9-]{36}$/.test(x));
+    const states=[];
+    for(const id of ids){
+      try{states.push(await this.status(id))}
+      catch(e){if(e.code!=='ENOENT')throw e}
+    }
+    states.sort((a,b)=>a.created_at.localeCompare(b.created_at));
+    try{await writeFile(this.indexFile,states.map(x=>x.execution_id).join('\n')+'\n',{flag:'wx',mode:0o600})}
+    catch(e){if(e.code!=='EEXIST')throw e}
+  }
 
   directory(id) {
     if (!/^[a-f0-9-]{36}$/.test(id ?? '')) throw new Error('Invalid execution ID');
@@ -206,6 +221,15 @@ export class Workspace {
     await atomicJSON(path.join(dir, 'state.json'), { execution_id: id, cwd: plan.cwd, request_id: requestID, trace_id: currentTrace(), status: 'queued', revision: 0, created_at: new Date().toISOString(),
       steps: plan.steps.map(({ id, type, depends_on, background }) => ({ id, type, depends_on, background: background ?? false, status: 'pending' })) });
     if (requestFile) await atomicJSON(requestFile, { id, hash });
+    await appendFile(this.indexFile,id+'\n',{mode:0o600});
+    if(this.config.runnerSocket){
+      await atomicJSON(path.join(dir,'batch-runner-config.json'),this.config);
+      try{await runnerRequest(this.config.runnerSocket,{op:'batch',id},{timeoutMs:10000})}
+      catch(e){
+        throw new Error('Isolated batch launch unconfirmed ('+id+'): '+e.message+
+          '. Inspect workspace_list/workspace_read with the same request_id.');
+      }
+    }else{
     const worker = spawn(process.execPath, [workerPath, dir], { detached: true, stdio: 'ignore',
       env: { PATH: process.env.PATH, LANG: process.env.LANG || 'C.UTF-8', BATCH_CONFIG: JSON.stringify(this.config) } });
     try {
@@ -217,6 +241,7 @@ export class Workspace {
       Object.assign(state, { status: 'failed', error: error.message, finished_at: new Date().toISOString() });
       await atomicJSON(path.join(dir, 'state.json'), state);
       throw error;
+    }
     }
     return id;
   }
@@ -274,10 +299,34 @@ export class Workspace {
       next_step: batchTerminal.has(state.status) ? 'Inspect every step status and exit code. Started background services are still separate jobs: monitor or stop with job_read/job_cancel. Drain truncated step logs with job_read using the step job_id and next_offset.' : 'Poll workspace_read with execution_id, next_offset and wait_ms=1000..10000. Do not resubmit the plan without its original request_id.' };
   }
 
-  async list() {
-    const ids = (await readdir(this.root)).filter(id => /^[a-f0-9-]{36}$/.test(id));
-    const states = await Promise.all(ids.map(id => this.status(id)));
-    return { executions: states.sort((a, b) => b.created_at.localeCompare(a.created_at)).map(({ execution_id, trace_id, cwd, request_id, status, created_at, finished_at }) => ({ execution_id, trace_id, cwd, request_id, status, created_at, finished_at })) };
+  async list({limit=50,cursor}={}){
+    requireInteger(limit,50,1,200,'limit');
+    const ids=(await readdir(this.root)).filter(id=>/^[a-f0-9-]{36}$/.test(id));
+    let file;try{file=await open(this.indexFile,'r')}
+    catch(e){if(e.code==='ENOENT'){await this.init();file=await open(this.indexFile,'r')}else throw e}
+    let content;
+    try{
+      const size=(await file.stat()).size;
+      const length=Math.min(size,1024*1024);
+      const data=Buffer.alloc(length);
+      const got=await file.read(data,0,length,size-length);
+      content=data.subarray(0,got.bytesRead).toString('utf8');
+      if(size>length)content=content.slice(content.indexOf('\n')+1);
+    }finally{await file.close()}
+    const index=[...new Set(content.split('\n').filter(id=>/^[a-f0-9-]{36}$/.test(id)).reverse())];
+    const start=cursor?index.indexOf(cursor)+1:0;
+    if(cursor&&start===0)throw Error('Unknown batch cursor; refresh workspace_list');
+    const page=[];
+    for(const id of index.slice(start,start+limit)){
+      try{
+        const state=await this.status(id);
+        const {execution_id,trace_id,cwd,request_id,status,created_at,finished_at}=state;
+        page.push({execution_id,trace_id,cwd,request_id,status,created_at,finished_at});
+      }catch(e){if(e.code!=='ENOENT')throw e}
+    }
+    return {executions:page,total:ids.length,
+      next_cursor:start+page.length<index.length?page.at(-1).execution_id:null,
+      truncated_history:index.length<ids.length};
   }
 
   async cancel({ execution_id }) {
@@ -346,7 +395,7 @@ export const workspaceTools = [
     }, required: ['steps'] }, annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true } },
   { name: 'workspace_read', title: 'Read batch progress and step results', description: 'Read durable batch states, step outputs/errors/job IDs and incremental coordinator logs. Reuse next_offset; wait_ms waits briefly for new progress. succeeded means finite steps passed; background service lifetime must be checked separately. No automatic ChatGPT wakeup.',
     inputSchema: { type: 'object', additionalProperties: false, properties: { execution_id: { type: 'string' }, offset: { type: 'integer', minimum: 0 }, max_bytes: { type: 'integer', minimum: 1, maximum: 262144 }, wait_ms: { type: 'integer', minimum: 0, maximum: 10000 } }, required: ['execution_id'] }, annotations: { readOnlyHint: true, openWorldHint: false } },
-  { name: 'workspace_list', title: 'Recover saved batch IDs', description: 'List saved executions and statuses after reconnecting or context loss. Inspect before resubmitting work.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
+  { name: 'workspace_list', title: 'Recover saved batch IDs', description: 'Paginated recent batches with a bounded index. Reuse next_cursor to continue; inspect status before retrying.', inputSchema: { type: 'object', properties: {limit:{type:'integer',minimum:1,maximum:200},cursor:{type:'string'}}, additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
   { name: 'workspace_cancel', title: 'Cancel a batch and its jobs', description: 'Stop pending/running batch work and jobs started by this execution, including background services retained after successful completion. Does not undo writes. Poll workspace_read/job_read to confirm termination.',
     inputSchema: { type: 'object', properties: { execution_id: { type: 'string' } }, required: ['execution_id'], additionalProperties: false }, annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false } }
 ];

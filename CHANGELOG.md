@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.12 — Reliable large-project execution and resource isolation
+
+- New install defaults of TasksMax=1024 and MemoryMax=4G. Existing units unchanged unless explicitly applying --apply-resource-limits; backups and automatic rollback cover managed drop-ins and service configuration.
+- Opt-in sibling systemd Runner with private 0600 Unix IPC and 768 tasks / 4G; control plane 512 tasks / 2G in isolated mode. Durable jobs, workspace batches and quick commands offload without changing IDs, logs, cancellation, or request_id replay safeguards. No privilege escalation through Admin.
+- Desktop Commander is cache-only in Core/Native modes, connects in opted-in DC profiles, and drains outstanding requests before stopping; existing published tool names remain compatible.
+- file_export advertises artifact ResourceLinks only when resources/read can fetch them; direct signed HTTPS links remain in structured and text outputs. Oversized exports stay downloadable, but are not listed as unreadable MCP resources.
+- Optional delta/none job log preview modes preserve output, byte cursors and legacy full preview; UTF-8 and truncated tails are retained.
+- Bounded trace summaries and paginated recent job/batch indexes avoid reading every historical status for ordinary navigation. Explicit full trace diagnostics remain available.
+- Resource diagnostics report cgroup PID/memory quotas and cumulative limit events separately from OOM kills. Performance distinguishes transport/tool errors from deduplicated execution success/failure/interruption, excluding batch child jobs.
+- Preserve current sensitive content capture and retention behavior. Not a rewrite of the Jobs, Workspace, OAuth or file transfer engines.
+
 ## 0.3.11 — Optional Cloudflare Tunnel public connectivity
 
 - Add an independently managed Cloudflare Tunnel Admin page, separate from the existing 17 MCP development tools, with Quick Tunnel and long-lived named-tunnel workflows, start/stop/resume/remove, health diagnostics and links to Cloudflare documentation.

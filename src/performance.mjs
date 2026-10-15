@@ -176,14 +176,18 @@ export class PerformanceLog {
     const aggregate={};
     for(const item of items){
       const name=item.tool||item.method;
-      const slot=aggregate[name]??={calls:0,errors:0,total_ms:0,max_ms:0};
+      const slot=aggregate[name]??={calls:0,errors:0,transport_errors:0,tool_errors:0,rpc_errors:0,total_ms:0,max_ms:0};
       slot.calls++;
+      if(item.status>=400)slot.transport_errors++;
+      if(item.tool_error)slot.tool_errors++;
+      if(item.rpc_error)slot.rpc_errors++;
       if(item.status>=400||item.tool_error||item.rpc_error)slot.errors++;
       slot.total_ms+=item.duration_ms||0;
       slot.max_ms=Math.max(slot.max_ms,item.duration_ms||0);
     }
     const tools=Object.entries(aggregate).map(([name,x])=>({
-      name,calls:x.calls,errors:x.errors,
+      name,calls:x.calls,errors:x.errors,transport_errors:x.transport_errors,
+      tool_errors:x.tool_errors,rpc_errors:x.rpc_errors,
       average_ms:round(x.total_ms/x.calls),max_ms:round(x.max_ms)
     })).sort((a,b)=>b.average_ms-a.average_ms);
     return {config:{...this.config},sample_count:items.length,

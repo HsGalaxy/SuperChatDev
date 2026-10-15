@@ -11,7 +11,7 @@ m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 class InstallTests(unittest.TestCase):
  def test_release(self):
   declared=json.loads((MODULE.parents[1]/'RELEASE.json').read_text())['files']
-  self.assertGreaterEqual(len(declared),45)
+  self.assertGreaterEqual(len(declared),49)
   self.assertEqual(m.verify_release(),len(declared))
  def test_cloudflare_first_boot_allows_ssh_loopback_admin_without_public_bind(self):
   from types import SimpleNamespace
