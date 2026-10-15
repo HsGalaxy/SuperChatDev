@@ -38,7 +38,7 @@ SuperChatDev **Core 模式共 16 个工具**，尽量让模型一眼知道什么
 - Unified Diff 的 Hunk 声明行数允许最多 3 行小偏差。原始上下文必须严格匹配；声明的起始行位置不准时仅在 ±20 行内、且**唯一命中**才允许定位。上下文不唯一会拒绝修改。
 - `job_cancel` 会短暂等待 Job 进入终态；在 worker 退出、但取消标记存在时优先收敛到 `cancelled`。`workspace_cancel` 会追踪仍未收敛的子任务并在结果标注 `cleanup_pending_jobs`。
 
-核心工具数量仍是 16 个；`workspace_execute` 新增向后兼容的 replace 步骤类型，需要 ChatGPT 端刷新、审核、发布工具定义。更激进的 inline 写入、锁替换、ZIP 压缩和正则搜索暂未启用，需要独立性能及安全评估。
+核心工具数量仍是 16 个；`workspace_execute` 新增向后兼容的 replace 步骤类型，需要 ChatGPT 端刷新、审核、发布工具定义。高风险的 inline 写入与锁替换仍不启用；正则搜索已经通过隔离 Worker 提供，详细见下文。
 
 ## 精确替换（推荐小改动）
 
@@ -99,3 +99,23 @@ SuperChatDev **Core 模式共 16 个工具**，尽量让模型一眼知道什么
 **注意：** 抓包的 MCP 请求/响应可能含 API Key、密码、个人数据、文件全文和签名下载链接。仅在可信服务器上短时启用，不要公开分享或提交抓包日志。
 
 调试关闭时，网关不再每请求调用性能计时器或安装监听器，不增加正文复制、额外 JSON 序列化或磁盘写入。无需刷新 MCP 工具 Schema。
+
+
+## v0.3.7：受 Desktop Commander 启发的高效开发流程
+
+保持 16 个核心工具不变，增强现有 fs_list / fs_read / fs_search / workspace_execute：
+
+- **fs_list(details:true)**：按需提供文件大小、修改时间、权限；不跟随软链接。
+- **fs_read.files[].tail_lines**：从末尾读取；文件超过 4 MiB 时，最多扫描最后 256 KiB，行号采用 tail[-N]，不提供整个文件的 SHA-256。尾部窗口**不能**充当写入哈希保护。
+- **fs_search(regex:true)**：可选 JavaScript 正则模式，默认仍是字面量搜索；隔离 Worker 每文件限时 350ms，超时会报告 skipped 和 regex_timed_out，不能当作未发现匹配。
+- **workspace_execute.copy**：从 source 复制到 destination，必须指定来自完整读取的 expected_sha256。
+- **workspace_execute.move**：从 source 移动到 destination，同样要求完整哈希。仅支持单个普通文件（不超过 128 MiB）、不覆盖目标、拒绝源软链接和硬链接；目录操作请使用明确授权的 Job。
+- **编辑失败诊断**：replace / patch 精确匹配失败时，在 steps[].result.diagnostic.suggestions 中返回有限的相似行、相似度和差异，但不执行任何模糊替换。
+
+使用示例：
+
+    {"cwd":"project","steps":[{"type":"copy","source":"src/main.mjs","destination":"backup/main.mjs","expected_sha256":"<完整文件 SHA-256>"}]}
+
+    {"cwd":"project","query":"function\s+handle[A-Za-z]+","glob":"src/**/*.mjs","regex":true}
+
+服务端 Schema 已扩展，部署后必须在 ChatGPT 的 MCP 应用设置中**刷新、审核并发布工具定义**；不会自动改变生产服务或旧会话的工具缓存。

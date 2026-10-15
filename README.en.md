@@ -118,7 +118,7 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 
 **Limitations:** Single trusted owner only, not a multi-tenant sandbox. MCP cannot disable ChatGPT's own approval dialogs or force OAuth refresh support in every client. Jobs may survive HTTP gateway restarts, but a host reboot does not automatically resume running commands.
 
-**License:** [MIT](LICENSE) · **Current runtime:** v0.3.6
+**License:** [MIT](LICENSE) · **Current runtime:** v0.3.7
 
 ### Git / GitHub from Admin (v0.3.4)
 
@@ -130,6 +130,15 @@ Open `/admin/` → **Git / GitHub** to configure the real command runner's Git c
 The new Admin **Performance Diagnostics** page records MCP request timing only when explicitly enabled. Explore P50/P95/P99, read/parse/dispatch phases, tool milestones, request/response byte counts and bounded JSONL exports. Commands, arguments, terminal output, OAuth tokens, headers, URLs, addresses, and error messages are never logged. Two rotated files are kept with a configurable 1–32 MiB per-file cap.
 
 In Interactive/Legacy profiles, `job_input(wait_for_prompt=true)` can wait for common shell/Python/IPython prompts without resending input; `job_read(tail_lines=N)` returns the most recent log lines independently of the durable byte cursor. Prompt detection is heuristic. These optional arguments modify the ChatGPT tool schema; refresh/review/publish app actions after updating production.
+
+### v0.3.7: native developer ergonomics (no DC required)
+
+- `fs_search(regex:true)` evaluates opt-in JavaScript regex in a separate worker with a 350ms per-file time limit; literal matching remains the default.
+- `fs_read.files[].tail_lines` supports large-file tails by scanning up to the last 256 KiB; a large-file tail deliberately returns no full-file SHA-256.
+- `fs_list(details:true)` offers file size, modification time and permissions without following symlinks.
+- `workspace_execute` adds guarded regular-file `copy` and `move` (128 MiB maximum, no overwrites, required source SHA-256).
+- Exact `replace` / `patch` failures return bounded read-only similarity hints; fuzzy matches are never applied.
+- The **16 Core tool names are unchanged**, but input schemas changed. Refresh/review/publish the ChatGPT app actions after deployment.
 
 ### v0.3.6: sensitive full MCP request/response capture (explicit opt-in)
 

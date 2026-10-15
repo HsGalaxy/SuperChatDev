@@ -63,3 +63,22 @@ Admin → **Performance Diagnostics** offers independent opt-in switches for met
 Sensitive capture requires a fresh Admin password to enable, view or export and remains gated by Admin sessions and CSRF. Size-controlled head/tail truncation (default 512 KiB per request/response, configurable 16–4096 KiB) and two rotated journal files (default 16 MiB each, max 32 MiB) prevent unbounded retention. Clearing the debug logs removes both timing and sensitive payload journals. Disabling debug stops future capture but does not automatically erase old captures.
 
 OFF incurs only a lightweight settings check: no extra timers, listeners, body copying, JSON serialization or debug writes. No MCP tool schema change.
+
+
+## v0.3.7: Native code workflows inspired by Desktop Commander
+
+The existing 16 Core tool names remain, with backward-compatible optional parameters. After deployment, refresh/review/publish the ChatGPT app actions.
+
+- **fs_list(details:true)** provides scoped file size, mtime and permissions without following symlinks.
+- **fs_read(files:[{path:"logs/build.log",tail_lines:25}])** reads the file end. Beyond 4 MiB it uses a 256 KiB tail window, relative tail[-N] labels, and sha256:null; never treat that as a whole-file edit guard.
+- **fs_search(regex:true)** opts into time-limited JavaScript regular expressions via an isolated worker (350ms per file); literal search remains the default. Timeouts are explicitly reported as incomplete scans.
+- **workspace_execute** accepts copy and move steps with source, destination and the required full-file expected_sha256, for regular files up to 128 MiB only. Destination overwrites, source symlinks and multi-link sources are refused.
+- **replace / patch** failures return bounded, read-only similar-line hints in steps[].result.diagnostic.suggestions. Fuzzy matches are never applied.
+
+Example:
+
+    {"cwd":"project","steps":[{"type":"copy","source":"src/main.mjs","destination":"backup/main.mjs","expected_sha256":"<full-file sha256>"}]}
+
+    {"cwd":"project","query":"function\s+handle[A-Za-z]+","glob":"src/**/*.mjs","regex":true}
+
+These enhancements preserve the existing workspace guards and single-owner security model. They do not turn the job runner into a hostile-code multi-tenant sandbox.

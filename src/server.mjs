@@ -81,7 +81,7 @@ export async function createApp(config) {
   };
   const catalog=()=>{
     const visible=admin.visibleTools();
-    return {version:'0.3.6',profile:admin.settings.toolProfile,
+    return {version:'0.3.7',profile:admin.settings.toolProfile,
       sha256:createHash('sha256').update(JSON.stringify(visible)).digest('hex'),
       visible_tools:visible.map(t=>t.name),registered_count:tools.length,visible_count:visible.length,
       upstream:upstream?.status() || {configured:false,connected:false},
@@ -98,7 +98,7 @@ export async function createApp(config) {
       tracePoint('dispatch.begin', {argument_fields:Object.keys(params.arguments||{}).length});
       return await dispatchTool(params);
     });
-    if (method === 'initialize') return { protocolVersion: versions.includes(params.protocolVersion) ? params.protocolVersion : '2025-03-26', capabilities, serverInfo: { name: 'chatgpt-dev-mcp', version: '0.3.6' }, instructions: serverInstructions };
+    if (method === 'initialize') return { protocolVersion: versions.includes(params.protocolVersion) ? params.protocolVersion : '2025-03-26', capabilities, serverInfo: { name: 'chatgpt-dev-mcp', version: '0.3.7' }, instructions: serverInstructions };
     if (method === 'ping') return {};
     if (method === 'tools/list') return { tools: admin.visibleTools(), _meta: {'starix/catalog_sha256':catalog().sha256} };
     if (method === 'resources/list') {
@@ -195,7 +195,7 @@ export async function createApp(config) {
       // transport's DNS-rebinding protection and other endpoints strict.
       const opaqueAuthorizationOrigin = req.headers.origin === 'null' && url.pathname === '/oauth/authorize' && ['GET', 'POST'].includes(req.method);
       if (req.headers.origin && !config.httpOrigins?.includes(req.headers.origin) && !opaqueAuthorizationOrigin) { json(res, 403, { error: 'Origin not allowed' }); return; }
-      if (url.pathname === '/health' && req.method === 'GET') { json(res, 200, { ok: true, version:'0.3.6' }); return; }
+      if (url.pathname === '/health' && req.method === 'GET') { json(res, 200, { ok: true, version:'0.3.7' }); return; }
       if (await admin.handle(req, res, url, readBody, json)) return;
       if (await oauth.handle(req, res, url, readBody, json)) return;
       if (url.pathname.startsWith('/artifacts/') && (req.method === 'GET' || req.method === 'HEAD')) {

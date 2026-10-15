@@ -18,7 +18,7 @@ const hash=t=>createHash('sha256').update(JSON.stringify({inputSchema:t.inputSch
 test('frozen core API matches published client schema',async()=>{
   assert.deepEqual([...byName.keys()],names);
   assert.equal(byName.size,core.length);
-  const snap=JSON.parse(await readFile(path.join(dirname,'contracts/core-tools-v0.3.5.json'),'utf8'));
+  const snap=JSON.parse(await readFile(path.join(dirname,'contracts/core-tools-v0.3.7.json'),'utf8'));
   assert.deepEqual(Object.fromEntries(names.map(n=>[n,hash(byName.get(n))])),snap.hashes,'Changed schema: coordinate client action refresh before shipping');
 });
 test('ChatGPT attachment and development handoff contracts are explicit',()=>{
@@ -29,6 +29,11 @@ test('ChatGPT attachment and development handoff contracts are explicit',()=>{
   assert.ok('wait_ms' in byName.get('job_start').inputSchema.properties);
   assert.ok('cwd' in byName.get('workspace_execute').inputSchema.properties);
   assert.ok('expected_sha256' in byName.get('fs_read').inputSchema.properties.files.items.properties);
+  assert.ok('tail_lines' in byName.get('fs_read').inputSchema.properties.files.items.properties);
+  assert.ok('regex' in byName.get('fs_search').inputSchema.properties);
+  assert.ok('details' in byName.get('fs_list').inputSchema.properties);
+  assert.ok(byName.get('workspace_execute').inputSchema.properties.steps.items.properties.type.enum.includes('copy'));
+  assert.ok(byName.get('workspace_execute').inputSchema.properties.steps.items.properties.type.enum.includes('move'));
   assert.ok('steps' in byName.get('workspace_execute').inputSchema.properties);
 });
 test('web schemas are bounded, strict and duplicate-free',()=>{

@@ -133,7 +133,7 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 
 **适用范围：** 单一受信任所有者；不是多租户执行沙箱。MCP 不能绕过 ChatGPT 网页端的平台级授权弹窗，也不能保证客户端一定支持 OAuth 自动刷新。Job 可在网关进程重启后恢复查询，但机器重启不会自动继续执行命令。
 
-**许可证：** [MIT](LICENSE) · **当前版本：** v0.3.6（中文/英文安装文档增强）
+**许可证：** [MIT](LICENSE) · **当前版本：** v0.3.7（中文/英文安装文档增强）
 
 ### Admin 原生 Git 配置（v0.3.4）
 
@@ -147,6 +147,15 @@ python3 -m unittest discover -s test -p 'test_installer*.py'
 在 Admin 左侧新增 **性能调试** 页面。详细调试默认关闭，管理员可以随时打开，查看 MCP 请求的 P50/P95/P99、逐条耗时、HTTP 读取/解析/派发阶段、内部工具调用时间线、请求/响应大小，或导出可离线分析的 JSONL 数据。日志严格排除工具入参、Shell 命令、输出、环境变量、令牌、原始 URL、客户端 IP 和错误消息；使用 1–32 MiB 的滚动文件上限，最多保留当前与上一份。普通 Trace 仍会继续保留既有的基础审计字段。
 
 Interactive/Legacy 模式中的 `job_input` 增加可选的 `wait_for_prompt`，识别常见 Shell/Python/IPython 提示符，直到提示符、退出或超时才返回。`job_read` 可用 `tail_lines` 查看最近 N 行而不改变原来的 `next_offset`。状态提示仅为启发式，不能替代检查退出码。这一版本改变了 `job_read` / `job_input` 的工具 Schema，生产升级后需在 ChatGPT App 中重新刷新、审核并发布工具定义。
+
+### v0.3.7：面向代码开发的原生工具增强（无需 DC）
+
+- **正则查找**：`fs_search(regex:true)` 可用 JavaScript 正则，独立 Worker 执行并逐文件设置 350ms 超时；默认仍为精确字面量查找，继续保护私有文件和工作区边界。
+- **大日志尾部**：`fs_read.files[].tail_lines` 可从尾部读取，文件超过 4 MiB 时最多扫描最后 256 KiB；此时不提供全文件 SHA-256，防止把局部校验误当编辑保护。
+- **文件详情**：`fs_list(details:true)` 返回大小、修改时间和权限，不跟随软链接。
+- **安全复制与移动**：`workspace_execute` 支持 `copy`、`move` 步骤；仅普通文件、128 MiB 上限、源文件 SHA-256 必填、目标存在时拒绝覆盖、禁止符号链接和硬链接源。
+- **编辑失败诊断**：`replace` / `patch` 精确匹配失败会返回有限的相似代码行、相似度和字符级差异，但绝不自动按模糊匹配修改。
+- 仍保持 **16 个 Core 工具**，但是三个工具的参数 Schema 已扩展。部署后**必须在 ChatGPT 中刷新、审核并重新发布工具定义**。完整测试和发布哈希按 v0.3.7 更新。
 
 ### v0.3.6：可选 MCP 完整请求与响应抓包
 

@@ -13,11 +13,26 @@ import { atomicJSON, executionCommand, isInside, readJSON, requireInteger, scope
 
 export function publicIP(address) {
   if (net.isIPv4(address)) {
-    const [a, b] = address.split('.').map(Number);
-    return !(a === 0 || a === 10 || a === 127 || a >= 224 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && (b === 168 || b === 0)) || (a === 100 && b >= 64 && b <= 127) || (a === 198 && (b === 18 || b === 19)));
+    const [a, b, c] = address.split('.').map(Number);
+    // Also reject special-use relay and TEST-NET ranges: they are not
+    // suitable remote download targets even when an approved host resolves
+    // to them. Keep the conservative existing 192.0/16 restriction.
+    return !(a === 0 || a === 10 || a === 127 || a >= 224 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && (b === 168 || b === 0 || (b === 88 && c === 99))) ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
+      (a === 203 && b === 0 && c === 113));
   }
-  // Accept global-unicast IPv6 only, excluding IPv4 mappings and documentation ranges.
-  return net.isIPv6(address) && /^[23]/.test(address) && !address.toLowerCase().startsWith('2001:db8:');
+  if (!net.isIPv6(address)) return false;
+  // Canonicalize hextets so an alternate spelling like 2001:0DB8::1
+  // cannot bypass the documentation-range guard.
+  const normalized = new URL(`https://[${address}]/`).hostname.slice(1, -1);
+  const [first, second] = normalized.split(':');
+  const documentation = normalized.startsWith('2001:db8:') ||
+    (first === '3fff' && (!second || Number.parseInt(second, 16) < 0x1000));
+  return /^[23]/.test(normalized) && !documentation;
 }
 
 export function validateDownloadURL(value, allowedOrigins) {

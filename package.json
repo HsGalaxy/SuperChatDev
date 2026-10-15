@@ -1,6 +1,6 @@
 {
   "name": "superchatdev",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "private": true,
   "type": "module",
   "description": "Purpose-built MCP development runtime for ChatGPT Web with native file handoff and durable jobs",

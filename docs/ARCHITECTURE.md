@@ -8,3 +8,8 @@ OAuth is Authorization Code + PKCE S256 with opaque Access Tokens and optional r
 
 
 Version 0.3.3 keeps 16 default Core tools and offers PTY input only under interactive/legacy profiles. Active-job markers accelerate cross-process job admission while maintaining the existing flock and job histories. No Bubblewrap, alternate sandbox, or handle-relative writes are included.
+
+
+## v0.3.7 native developer helpers
+
+Regex scans use a short-lived Node worker with a hard per-file deadline rather than running arbitrary patterns on the MCP event loop. Scoped no-symlink file descriptors read text before handing it to the worker. Large-file tails are bounded to 256 KiB and cannot supply full-file SHA-256. Guarded copy/move executes through the existing unprivileged workspace helper with no-clobber destination publishing and source hash checks. Similarity hints are advisory only; real edits still require exact context.

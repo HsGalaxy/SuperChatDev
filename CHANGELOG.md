@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.7 — DC-inspired native code workflow improvements
+
+- Opt-in bounded regex search in `fs_search` via an isolated worker; paged results and existing literal matching remain available.
+- Large-file tail reads in `fs_read` (256 KiB maximum window) and safe file metadata in `fs_list`.
+- Guarded `copy` and `move` steps in durable workspace batches, with source SHA-256, no overwrite or symlink following.
+- Read-only near-match diagnostics for failed exact replaces and patch contexts. No fuzzy edits are performed.
+- Reject legacy IPv4 relay and TEST-NET ranges before HTTPS file imports; normalize IPv6 documentation addresses.
+- Maintain 16 Core tools, update frozen v0.3.7 input schema contracts; ChatGPT actions must be republished.
+
 ## 0.3.6 — Sensitive full MCP payload capture (explicit opt-in)
 
 - Dedicated, authenticated **MCP JSON-RPC request + response capture**, separate from metadata-only performance logging. Stores the received request body and the exact serialized response on authenticated MCP calls only; no raw HTTP headers or Admin API requests.

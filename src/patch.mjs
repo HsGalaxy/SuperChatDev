@@ -3,6 +3,7 @@ import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs
 import path from 'node:path';
 import { isInside } from './common.mjs';
 import { parseAgentPatch } from './agent-patch.mjs';
+import { editSuggestions } from './edit-diagnostics.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const linesOf = text => text.match(/[^\n]*\n|[^\n]+$/g) || [];
@@ -160,7 +161,15 @@ export async function applyPatch({ workspace, cwd, step }) {
     if (expected && hash(bytes) !== expected) throw new Error(`expected_sha256 mismatch: ${file.path}`);
     const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
     if (text.includes('\0')) throw new Error('Binary patches are unsupported');
-    const next = file.deleteAll ? '' : applyHunks(text, file);
+    let next;
+    try { next = file.deleteAll ? '' : applyHunks(text, file); }
+    catch (error) {
+      if (/context|hunk|match/i.test(error.message)) {
+        const requested=file.hunks.find(h=>h.old?.length)?.old?.join('') || '';
+        error.suggestions=editSuggestions(text,requested);
+      }
+      throw error;
+    }
     if (file.remove && next !== '') throw new Error('Delete patch must remove the complete file');
     if (Buffer.byteLength(next) > 8 * 1024 * 1024) throw new Error('Patched file exceeds 8 MiB');
     prepared.push({ file, target, bytes, next, mode: info ? info.mode & 0o777 : 0o660 });

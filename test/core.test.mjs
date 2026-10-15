@@ -84,8 +84,14 @@ test('download guard rejects unapproved origins, credentials, private and mapped
   const allowed = new Set(['https://files.example']);
   assert.equal(validateDownloadURL('https://files.example/input?token=abc', allowed).hostname, 'files.example');
   for (const url of ['http://files.example/input', 'https://other.example/input', 'https://user@files.example/input']) assert.throws(() => validateDownloadURL(url, allowed));
-  for (const ip of ['127.0.0.1', '10.0.0.1', '172.16.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '::1', '::ffff:127.0.0.1', 'fc00::1', '2001:db8::1']) assert.equal(publicIP(ip), false, ip);
-  assert.equal(publicIP('8.8.8.8'), true);
+  for (const ip of [
+    '127.0.0.1', '10.0.0.1', '172.16.0.1', '192.168.1.1',
+    '169.254.169.254', '100.64.0.1', '192.88.99.1',
+    '198.51.100.5', '203.0.113.8',
+    '::1', '::ffff:127.0.0.1', 'fc00::1',
+    '2001:db8::1', '2001:0DB8::1', '3fff::1'
+  ]) assert.equal(publicIP(ip), false, ip);
+  for (const ip of ['8.8.8.8', '1.1.1.1']) assert.equal(publicIP(ip), true, ip);
   assert.equal(publicIP('2606:4700:4700::1111'), true);
 });
 

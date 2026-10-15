@@ -26,7 +26,8 @@ export function toolRequirements(name, args = {}, upstream = false) {
   if (name === 'workspace_execute') {
     const result = new Set(['workspace']);
     for (const step of Array.isArray(args.steps) ? args.steps : []) {
-      if (['write','replace','mkdir','patch'].includes(step.type)) result.add('filesystemWrite');
+      if (['write','replace','mkdir','patch','copy','move'].includes(step.type)) result.add('filesystemWrite');
+      if (['copy','move'].includes(step.type)) result.add('filesystemRead');
       if (step.type === 'patch' || step.type === 'replace') result.add('filesystemRead');
       if (['exec','container_build'].includes(step.type)) {
         for (const permission of ['commandExecution','filesystemRead','filesystemWrite']) result.add(permission);

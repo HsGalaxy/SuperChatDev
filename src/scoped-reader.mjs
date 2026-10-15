@@ -56,6 +56,47 @@ export class ScopedReader {
       return {text, bytes, sha256: digest(raw)};
     } finally { await fd.close(); }
   }
+  async tail(cwd, file, count, maxBytes = 256 * 1024) {
+    const {fd,stat}=await this.handle(cwd,file);
+    try{
+      // Bounded reverse reading; the first partial line is discarded when
+      // seeking starts in the middle of the file.
+      const chunks=[];let position=stat.size,scanned=0,newlines=0;
+      while(position>0&&scanned<maxBytes&&newlines<=count+1){
+        const n=Math.min(32768,position,maxBytes-scanned);
+        const chunk=Buffer.alloc(n);
+        const start=position-n;
+        const {bytesRead}=await fd.read(chunk,0,n,start);
+        if(bytesRead!==n)throw new Error('File changed while reading tail; retry');
+        chunks.unshift(chunk);
+        for(const byte of chunk)if(byte===10)newlines++;
+        scanned+=n;position=start;
+      }
+      const after=await fd.stat();
+      if(after.size!==stat.size||after.mtimeMs!==stat.mtimeMs)
+        throw new Error('File changed while reading tail; retry');
+      let raw=Buffer.concat(chunks);
+      if(position>0){
+        const cut=raw.indexOf(10);
+        if(cut<0)throw new Error('Last complete line exceeds the 256 KiB tail window');
+        raw=raw.subarray(cut+1);
+      }
+      const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(raw);
+      if(text.includes('\0'))throw new Error('Binary file; use file_export instead');
+      const lines=text.split('\n');
+      if(text.endsWith('\n'))lines.pop();
+      if(!text.length)lines.length=0;
+      return {lines:lines.slice(-count).map(line=>line.replace(/\r$/,'')),
+        bytes:stat.size,window_truncated:position>0&&lines.length<count};
+    }finally{await fd.close();}
+  }
+  async metadata(cwd, file, directory = false) {
+    const {fd,stat}=await this.handle(cwd,file,directory);
+    try {
+      return {size:stat.size,modified_at:stat.mtime.toISOString(),
+        permissions:'0'+(stat.mode&0o777).toString(8)};
+    } finally { await fd.close(); }
+  }
   async entries(cwd, relative) {
     const {fd} = await this.handle(cwd, relative, true);
     try {

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { regexScanner } from './regex-search.mjs';
 import { ScopedReader, digest, relativePath } from './scoped-reader.mjs';
 import { requireInteger } from './common.mjs';
 
@@ -55,15 +56,22 @@ const encodeCursor = data => Buffer.from(JSON.stringify(data)).toString('base64u
 
 export class CodeTools {
   constructor(config) { this.reader=new ScopedReader(config); }
-  async list({cwd='.',path:directory='.',depth=1,limit=100,cursor:token,include_hidden=false}={}) {
+  async list({cwd='.',path:directory='.',depth=1,limit=100,cursor:token,include_hidden=false,details=false}={}) {
     requireInteger(depth,1,1,4,'depth');requireInteger(limit,100,1,500,'limit');
-    if(typeof include_hidden!=='boolean')throw new Error('include_hidden must be boolean');
+    if(typeof include_hidden!=='boolean'||typeof details!=='boolean')throw new Error('include_hidden and details must be boolean');
     const data=await this.reader.inventory(cwd,directory,depth,include_hidden);
-    const query=digest(JSON.stringify([cwd,directory,depth,include_hidden,data.entries]));
+    const query=digest(JSON.stringify([cwd,directory,depth,include_hidden,details,data.entries]));
     const position=cursor(token,query);const entries=[];let outputBytes=0;
     for(const entry of data.entries.slice(position.index,position.index+limit)){
-      const bytes=Buffer.byteLength(JSON.stringify(entry));if(outputBytes+bytes>65536)break;
-      entries.push(entry);outputBytes+=bytes;
+      let item=entry;
+      if(details){
+        if(entry.type==='file'||entry.type==='directory'){
+          try {item={...entry,...await this.reader.metadata(cwd,entry.path,entry.type==='directory')};}
+          catch {item={...entry,metadata_error:'Metadata unavailable or path changed'};}
+        }else item={...entry,metadata_error:'Special files and symlinks are not followed'};
+      }
+      const bytes=Buffer.byteLength(JSON.stringify(item));if(outputBytes+bytes>65536)break;
+      entries.push(item);outputBytes+=bytes;
     }
     const next=position.index+entries.length;
     return {cwd:relativePath(cwd),path:relativePath(directory),entries,returned:entries.length,
@@ -73,66 +81,126 @@ export class CodeTools {
   }
   async read({cwd='.',files,max_bytes=32768}) {
     requireInteger(max_bytes,32768,1024,131072,'max_bytes');
-    if(!Array.isArray(files)||!files.length||files.length>16)throw new Error('files must contain 1..16 file range objects');
+    if(!Array.isArray(files)||!files.length||files.length>16)
+      throw new Error('files must contain 1..16 file range objects');
     const results=[];let remaining=max_bytes;
     for(const request of files) {
-      if(!request||typeof request!=='object'||typeof request.path!=='string')throw new Error('Each file requires path');
+      if(!request||typeof request!=='object'||typeof request.path!=='string')
+        throw new Error('Each file requires path');
+      const tail=request.tail_lines===undefined?null:requireInteger(request.tail_lines,20,1,500,'tail_lines');
+      if(tail!==null && request.start_line!==undefined)
+        throw new Error('Use either start_line or tail_lines, not both');
       const start=requireInteger(request.start_line,1,1,10000000,'start_line');
-      const count=requireInteger(request.line_count,160,1,500,'line_count');
-      const result={path:relativePath(request.path),start_line:start};
-      try {
-        const data=await this.reader.text(cwd,result.path);
-        if(request.expected_sha256!==undefined && request.expected_sha256!==data.sha256)throw new Error('File changed since previous page; restart read without expected_sha256');
-        const lines=data.text.split('\n');if(data.text.endsWith('\n'))lines.pop();if(!data.text.length)lines.length=0;
-        let end=start-1, output='';
-        for(let i=start-1;i<Math.min(lines.length,start-1+count);i++) {
-          const line=`${i+1}: ${lines[i].replace(/\r$/,'')}\n`;
-          if(Buffer.byteLength(line)>remaining)break;
-          output+=line;remaining-=Buffer.byteLength(line);end=i+1;
+      const count=tail ?? requireInteger(request.line_count,160,1,500,'line_count');
+      const result={path:relativePath(request.path),start_line:tail===null?start:null};
+      try{
+        let data;
+        try{data=await this.reader.text(cwd,result.path);}
+        catch(error){
+          if(tail===null || !/exceeds native text-read limit/.test(error.message))throw error;
+          if(request.expected_sha256!==undefined)
+            throw new Error('Large-file tail cannot verify a full-file SHA-256; omit expected_sha256');
+          const window=await this.reader.tail(cwd,result.path,tail);
+          let output='',returned=0;
+          for(let i=0;i<window.lines.length;i++){
+            const piece='tail[-'+(window.lines.length-i)+']: '+window.lines[i]+'\n';
+            if(Buffer.byteLength(piece)>remaining)break;
+            output+=piece;remaining-=Buffer.byteLength(piece);returned++;
+          }
+          Object.assign(result,{
+            sha256:null,bytes:window.bytes,total_lines:null,end_line:null,
+            numbered_text:output,next_read:null,read_only_tail:true,
+            line_numbers_relative:true,tail_window_truncated:window.window_truncated,
+            truncated:returned<window.lines.length
+          });
+          if(window.window_truncated)
+            result.warning='Tail was limited to the final 256 KiB; older lines may be unavailable';
+          if(!output&&window.lines.length)result.error='Output budget exhausted or line exceeds max_bytes';
+          results.push(result);continue;
         }
-        const more=end<lines.length;
-        Object.assign(result,{sha256:data.sha256,bytes:data.bytes,total_lines:lines.length,end_line:end,numbered_text:output,
+        if(request.expected_sha256!==undefined&&request.expected_sha256!==data.sha256)
+          throw new Error('File changed since previous page; restart read without expected_sha256');
+        const lines=data.text.split('\n');
+        if(data.text.endsWith('\n'))lines.pop();
+        if(!data.text.length)lines.length=0;
+        const first=tail===null?start-1:Math.max(0,lines.length-count);
+        let end=first,output='';
+        for(let i=first;i<Math.min(lines.length,first+count);i++){
+          const piece=(i+1)+': '+lines[i].replace(/\r$/,'')+'\n';
+          if(Buffer.byteLength(piece)>remaining)break;
+          output+=piece;remaining-=Buffer.byteLength(piece);end=i+1;
+        }
+        const more=tail===null&&end<lines.length;
+        Object.assign(result,{
+          start_line:first+1,sha256:data.sha256,bytes:data.bytes,total_lines:lines.length,
+          end_line:end,numbered_text:output,
           next_read:more?{path:result.path,start_line:end+1,line_count:count,expected_sha256:data.sha256}:null,
-          truncated:more && end<start+count-1});
-        if(more&&!output)result.error='Output budget exhausted or line exceeds max_bytes; increase budget or use an authorized job';
+          truncated:(tail!==null&&end<Math.min(lines.length,first+count))||
+            (more&&end<start+count-1),read_only_tail:tail!==null
+        });
+        if((more||tail!==null)&&!output)result.error='Output budget exhausted or line exceeds max_bytes';
       }catch(error){result.error=pathHint(cwd,request.path,error);}
       results.push(result);
     }
     return {cwd:relativePath(cwd),files:results,output_bytes:max_bytes-remaining,
-      next_step:'Reuse next_read entries in fs_read.files. Use the returned raw-byte sha256 as a workspace_execute write/patch guard. Number prefixes are display-only.'};
+      next_step:'Use next_read for continuation. tail_lines retrieves the file end; for large files only a 256 KiB window is read and full-file SHA-256 is unavailable. Use hashes from full reads as edit guards.'};
   }
-  async search({cwd='.',path:directory='.',query,glob='',case_sensitive=true,limit=40,cursor:token}={}) {
-    if(typeof query!=='string'||!query.length||query.length>512||query.includes('\n'))throw new Error('query must be a nonempty single-line literal, maximum 512 characters');
-    if(typeof glob!=='string'||glob.length>256||typeof case_sensitive!=='boolean')throw new Error('Invalid search filter');
+  async search({cwd='.',path:directory='.',query,glob='',case_sensitive=true,regex=false,limit=40,cursor:token}={}) {
+    if(typeof query!=='string'||!query.length||query.length>512||query.includes('\n'))
+      throw new Error('query must be a nonempty single-line pattern, maximum 512 characters');
+    if(typeof glob!=='string'||glob.length>256||typeof case_sensitive!=='boolean'||typeof regex!=='boolean')
+      throw new Error('Invalid search filter');
     requireInteger(limit,40,1,200,'limit');
     const data=await this.reader.inventory(cwd,directory,32,false);
     const files=data.entries.filter(e=>e.type==='file'&&searchGlob(glob,e.path));
-    const id=digest(JSON.stringify([cwd,directory,query,glob,case_sensitive,files.map(e=>e.path)]));
-    let {index,line}=cursor(token,id);const matches=[],skipped=[];let scanned=0,bytes=0,skippedCount=0;
+    const id=digest(JSON.stringify([cwd,directory,query,glob,case_sensitive,regex,files.map(e=>e.path)]));
+    let {index,line}=cursor(token,id);
+    const matches=[],skipped=[];let scanned=0,bytes=0,skippedCount=0,regexTimedOut=false;
     const needle=case_sensitive?query:query.toLocaleLowerCase();
     const deadline=Date.now()+1500;
-    for(;index<files.length;index++,line=0) {
-      if(scanned>=200||bytes>=8*1024*1024||Date.now()>deadline)break;
-      let file;scanned++;
-      try{file=await this.reader.text(cwd,files[index].path,1024*1024);}catch{skippedCount++;if(skipped.length<20)skipped.push({path:files[index].path,reason:'unreadable, binary or larger than 1 MiB'});continue;}
-      bytes+=file.bytes;
-      const lines=file.text.split('\n');
-      for(;line<lines.length;line++) {
-        if((case_sensitive?lines[line]:lines[line].toLocaleLowerCase()).includes(needle)){
-          const preview=lines[line].slice(0,600).replace(/\r$/,'');
-          matches.push({path:files[index].path,line:line+1,text:preview,text_truncated:lines[line].length>600,context:context(lines,line),sha256:file.sha256});
-          if(matches.length>=limit){line++;break;}
+    const scanner=regex?regexScanner(query,case_sensitive):null;
+    try{
+      for(;index<files.length;index++,line=0){
+        if(scanned>=200||bytes>=8*1024*1024||Date.now()>deadline)break;
+        let file;scanned++;
+        try{file=await this.reader.text(cwd,files[index].path,1024*1024);}
+        catch{
+          skippedCount++;
+          if(skipped.length<20)skipped.push({path:files[index].path,reason:'unreadable, binary or larger than 1 MiB'});
+          continue;
         }
+        bytes+=file.bytes;
+        const lines=file.text.split('\n');
+        if(regex){
+          const found=await scanner.matches(file.text,line,limit-matches.length);
+          if(found.timed_out){
+            regexTimedOut=true;skippedCount++;
+            if(skipped.length<20)skipped.push({path:files[index].path,reason:'regex worker timed out (possibly expensive pattern)'});
+            index++;line=0;break;
+          }
+          for(const match of found.matches)matches.push({...match,path:files[index].path,sha256:file.sha256});
+          line=found.nextLine;
+        }else{
+          for(;line<lines.length;line++){
+            if((case_sensitive?lines[line]:lines[line].toLocaleLowerCase()).includes(needle)){
+              const preview=lines[line].slice(0,600).replace(/\r$/,'');
+              matches.push({path:files[index].path,line:line+1,text:preview,text_truncated:lines[line].length>600,context:context(lines,line),sha256:file.sha256});
+              if(matches.length>=limit){line++;break;}
+            }
+          }
+        }
+        if(matches.length>=limit)break;
       }
-      if(matches.length>=limit)break;
-    }
-    return {cwd:relativePath(cwd),query,matches,scanned_files:scanned,skipped,skipped_count:skippedCount,warnings:data.warnings,
+    }finally{if(scanner)await scanner.close();}
+    return {cwd:relativePath(cwd),query,regex,matches,scanned_files:scanned,skipped,skipped_count:skippedCount,
+      warnings:data.warnings,regex_timed_out:regexTimedOut,
       next_cursor:index<files.length?encodeCursor({query:id,index,line}):null,traversal_incomplete:data.limited,
-      next_step:'Search is literal with +/-2 context lines; glob supports src/**/*.mjs and basename patterns. Read full results with fs_read. Live edits can change pagination; hashes protect subsequent edits.'};
+      next_step:regex?'Regex runs in a bounded worker; timed-out files are skipped. Verify matches with fs_read and use their SHA-256 for guarded edits.':'Literal search with +/-2 context lines; use fs_read and SHA-256 guards for edits.'};
   }
+
 }
 export const codeTools=[
- {name:'fs_list',title:'List project files',description:'Bounded, sorted project tree without a shell. Skips dependency/build/secret paths and never follows symlinks. Reuse next_cursor; traversal_incomplete means narrow the directory.',inputSchema:obj({...base,path:string('Directory relative to cwd, default dot'),depth:integer(1,4),limit:integer(1,500),cursor:string('Previous next_cursor'),include_hidden:{type:'boolean'}}),annotations:readonly},
- {name:'fs_read',title:'Read numbered code ranges',description:'Read up to 16 UTF-8 files with line numbers and raw-byte SHA-256. Per-file errors, shared output budget, next_read for continuation. Do not send displayed line prefixes back as file content.',inputSchema:{...obj({...base,files:{type:'array',minItems:1,maxItems:16,items:{...obj({path:string('File relative to cwd'),start_line:integer(1,10000000),line_count:integer(1,500),expected_sha256:string('Optional hash returned by the previous page')}),required:['path']}},max_bytes:integer(1024,131072)}),required:['files']},annotations:readonly},
- {name:'fs_search',title:'Search project code',description:'Search literal text (no regex) in UTF-8 project files, with line numbers and hashes. Optional basename glob such as *.mjs. Bounded scan, explicit next_cursor and skipped files; excludes secrets/dependencies.',inputSchema:{...obj({...base,path:string('Subdirectory relative to cwd'),query:string('Single-line literal text'),glob:string('Optional basename wildcard'),case_sensitive:{type:'boolean'},limit:integer(1,200),cursor:string('Previous next_cursor')}),required:['query']},annotations:readonly}
+ {name:'fs_list',title:'List project files',description:'Bounded, sorted project tree without a shell. Skips dependency/build/secret paths and never follows symlinks. Reuse next_cursor; traversal_incomplete means narrow the directory.',inputSchema:obj({...base,path:string('Directory relative to cwd, default dot'),depth:integer(1,4),limit:integer(1,500),cursor:string('Previous next_cursor'),include_hidden:{type:'boolean'},details:{type:'boolean',description:'Include bounded file size, modification time and permissions; no symlink following.'}}),annotations:readonly},
+ {name:'fs_read',title:'Read numbered code ranges',description:'Read up to 16 UTF-8 files; tail_lines supports large files (without full hash), normal reads return line numbers and SHA-256. Per-file errors, shared output budget, next_read for continuation. Do not send displayed line prefixes back as file content.',inputSchema:{...obj({...base,files:{type:'array',minItems:1,maxItems:16,items:{...obj({path:string('File relative to cwd'),start_line:integer(1,10000000),line_count:integer(1,500),tail_lines:integer(1,500),expected_sha256:string('Optional hash returned by the previous page')}),required:['path']}},max_bytes:integer(1024,131072)}),required:['files']},annotations:readonly},
+ {name:'fs_search',title:'Search project code',description:'Search literal text (default) or opt-in bounded regex in UTF-8 project files, with line numbers and hashes. Optional basename glob such as *.mjs. Bounded scan, explicit next_cursor and skipped files; excludes secrets/dependencies.',inputSchema:{...obj({...base,path:string('Subdirectory relative to cwd'),query:string('Single-line literal text'),glob:string('Optional basename wildcard'),case_sensitive:{type:'boolean'},regex:{type:'boolean',description:'Opt-in bounded JavaScript regex; literal by default.'},limit:integer(1,200),cursor:string('Previous next_cursor')}),required:['query']},annotations:readonly}
 ];

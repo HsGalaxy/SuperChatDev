@@ -39,7 +39,7 @@ export function validatePlan(args) {
   for (let i = 0; i < args.steps.length; i++) {
     const input = args.steps[i];
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error(`Invalid step ${i + 1}`);
-    const fields = { write: ['path', 'content', 'expected_sha256', 'create_only'], replace: ['path', 'old_text', 'new_text', 'expected_sha256'], mkdir: ['path'], patch: ['patch', 'expected_sha256'], container_build: ['context', 'dockerfile', 'output', 'network', 'timeout_seconds'], exec: ['argv', 'command', 'cwd', 'env', 'background', 'timeout_seconds'], http_check: ['url', 'method', 'expected_status', 'timeout_seconds', 'retry_interval_ms'] }[input.type];
+    const fields = { write: ['path', 'content', 'expected_sha256', 'create_only'], replace: ['path', 'old_text', 'new_text', 'expected_sha256'], copy: ['source', 'destination', 'expected_sha256'], move: ['source', 'destination', 'expected_sha256'], mkdir: ['path'], patch: ['patch', 'expected_sha256'], container_build: ['context', 'dockerfile', 'output', 'network', 'timeout_seconds'], exec: ['argv', 'command', 'cwd', 'env', 'background', 'timeout_seconds'], http_check: ['url', 'method', 'expected_status', 'timeout_seconds', 'retry_interval_ms'] }[input.type];
     if (!Array.isArray(fields) || Object.keys(input).some(key => !['id', 'type', 'depends_on', ...fields].includes(key))) throw new Error(`Unknown step type or field in step ${i + 1}`);
     const id = input.id ?? `step_${i + 1}`;
     if (typeof id !== 'string' || !stepID.test(id) || ids.has(id)) throw new Error('Step IDs must be unique and contain 1..64 letters, digits, underscores or hyphens');
@@ -69,6 +69,14 @@ export function validatePlan(args) {
         step.content = input.content;
         if (input.expected_sha256) step.expected_sha256 = input.expected_sha256.toLowerCase();
       }
+    } else if (input.type === 'copy' || input.type === 'move') {
+      const source=relative(input.source, id+'.source');
+      const destination=relative(input.destination, id+'.destination');
+      if (path.posix.normalize(source)===path.posix.normalize(destination))
+        throw new Error('copy/move source and destination must differ');
+      if (typeof input.expected_sha256!=='string'||!/^[a-f0-9]{64}$/i.test(input.expected_sha256))
+        throw new Error('copy/move require the current source expected_sha256');
+      Object.assign(step,{source,destination,expected_sha256:input.expected_sha256.toLowerCase()});
     } else if (input.type === 'container_build') {
       if (!['none', 'private'].includes(input.network ?? 'none')) throw new Error('container_build network must be none or private');
       Object.assign(step, { context: relative(input.context ?? '.', `${id}.context`), dockerfile: relative(input.dockerfile ?? 'Dockerfile', `${id}.dockerfile`),
@@ -114,7 +122,7 @@ export function validatePlan(args) {
   const ancestors = id => {const set=new Set();const walk=x=>{for(const d of byID.get(x).depends_on){if(!set.has(d)){set.add(d);walk(d);}}};walk(id);return set;};
   const writes=new Map();
   for(const step of plan.steps){
-    const paths=['write','replace'].includes(step.type)?[step.path]:step.type==='patch'?parsePatch(step.patch).map(f=>f.path):[];
+    const paths=['write','replace'].includes(step.type)?[step.path]:step.type==='patch'?parsePatch(step.patch).map(f=>f.path):['copy','move'].includes(step.type)?[step.source,step.destination]:[];
     for(const file of paths){
       const key=path.posix.normalize(file);
       for(const earlier of writes.get(key)||[]){
@@ -145,7 +153,7 @@ export class Workspace {
   async execute(args) {
     const plan = validatePlan(args);
     for(const step of plan.steps){
-      const targets=step.type==='patch'?parsePatch(step.patch).map(f=>f.path):['write','replace','mkdir'].includes(step.type)?[step.path]:[];
+      const targets=step.type==='patch'?parsePatch(step.patch).map(f=>f.path):['write','replace','mkdir'].includes(step.type)?[step.path]:['copy','move'].includes(step.type)?[step.source,step.destination]:[];
       for(const file of targets)if(isInside(this.config.dataRoot,path.resolve(this.config.workspace,plan.cwd,file)))throw new Error('Batch cannot edit private MCP state');
     }
     const wait_ms = requireInteger(args.wait_ms, 1000, 0, 10000, 'wait_ms');
@@ -272,9 +280,11 @@ const stepSchema = {
   type: 'object', additionalProperties: false,
   properties: {
     id: { type: 'string', description: 'Unique step ID. Defaults to step_1, step_2, etc.' },
-    type: { type: 'string', enum: ['write', 'replace', 'mkdir', 'patch', 'container_build', 'exec', 'http_check'] },
+    type: { type: 'string', enum: ['write', 'replace', 'copy', 'move', 'mkdir', 'patch', 'container_build', 'exec', 'http_check'] },
     depends_on: { type: 'array', items: { type: 'string' }, description: 'Omit to depend on previous step; [] means independent. Explicit dependencies enable bounded parallel execution.' },
     path: { type: 'string', description: 'write/replace/mkdir: path relative to batch cwd. Parent directories are created.' },
+    source: { type: 'string', description: 'copy/move: existing regular source file relative to cwd. No symlinks or hardlinks.' },
+    destination: { type: 'string', description: 'copy/move: fresh destination file relative to cwd; refuses overwrites.' },
     create_only: {type:'boolean',description:'write: atomically refuse an already existing path. Use for new files.'},
     content: { type: 'string', description: 'write: complete UTF-8 content, required. Files are atomically replaced.' },
     old_text: { type: 'string', description: 'replace: exact existing UTF-8 snippet; must occur precisely once.' },
@@ -284,7 +294,7 @@ const stepSchema = {
     output: { type: 'string', description: 'container_build: new docker-archive output path relative to batch cwd, default image.tar. Refuses overwrite; export with file_export.' },
     network: { type: 'string', enum: ['none', 'private'], description: 'container_build: RUN network defaults to none. private enables slirp outbound networking; no host network mode. Base image pulls can still use registry network.' },
     patch: { type: 'string', description: 'patch: unified diff with ---/+++ and @@ hunks; tolerates small wrong counts and unique-context relocation within 20 lines. No fuzzy content matching. Supports text adds/updates/deletes. Preflights all files; each replacement atomic, ordinary errors attempt rollback, not crash-atomic across files.' },
-    expected_sha256: { oneOf: [{ type: 'string' }, { type: 'object', additionalProperties: { type: 'string' } }], description: 'write/replace: current-file hash (required for replace). patch: map of project-relative paths to hashes. Mismatch fails without editing.' },
+    expected_sha256: { oneOf: [{ type: 'string' }, { type: 'object', additionalProperties: { type: 'string' } }], description: 'write/replace/copy/move: current-file hash (required for replace). patch: map of project-relative paths to hashes. Mismatch fails without editing.' },
     argv: { type: 'array', minItems: 1, items: { type: 'string' }, description: 'exec: executable and arguments. Specify argv or command.' },
     command: { type: 'string', description: 'exec: explicit shell command run via bash --noprofile --norc -c. Specify command or argv.' },
     cwd: { type: 'string', description: 'exec: working directory relative to batch cwd; defaults to dot.' },
@@ -300,7 +310,7 @@ const stepSchema = {
 
 export const workspaceTools = [
   { name: 'workspace_execute', title: 'Execute a durable workspace batch',
-    description: 'Combine UTF-8 writes, unique exact text replacements, safe unified patches, rootless container image builds, mkdir, foreground commands, background service starts and retried HTTP checks in one durable dependency graph. Defaults to sequential order; explicit depends_on and [] enable parallel work. Entire plan is validated before effects. Files/commands run as the existing execution user. Returns per-step states, outputs, errors and job IDs; long plans return an execution_id for workspace_read. Use a stable request_id when retrying identical calls to avoid duplicate effects. Writes require content. Mark long-lived servers background:true and verify readiness with http_check. No rollback or system-level autostart.',
+    description: 'Combine UTF-8 writes, unique exact replacements with failure hints, guarded copy/move (files only), safe patches, rootless container builds, mkdir, foreground commands, background service starts and retried HTTP checks in one durable dependency graph. Defaults to sequential order; explicit depends_on and [] enable parallel work. Entire plan is validated before effects. Files/commands run as the existing execution user. Returns per-step states, outputs, errors and job IDs; long plans return an execution_id for workspace_read. Use a stable request_id when retrying identical calls to avoid duplicate effects. Writes require content. Mark long-lived servers background:true and verify readiness with http_check. No rollback or system-level autostart.',
     inputSchema: { type: 'object', additionalProperties: false, properties: {
       steps: { type: 'array', minItems: 1, maxItems: 32, items: stepSchema },
       cwd: { type: 'string', default: '.', description: 'Project directory relative to workspace_root. Writes/mkdir can create a new project; exec requires its cwd to exist.' },
