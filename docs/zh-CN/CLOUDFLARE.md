@@ -11,6 +11,14 @@ SuperChatDev 的正常安装、升级和启动绝不会自动下载 cloudflared�
 
 此命令使用 Cloudflare 官方签名 APT 源。先使用 --install-cloudflared --dry-run 可验证不修改系统。你也可以自行安装 cloudflared。
 
+### 首次固定域名配置：SSH 本地入口
+
+如果新安装的是固定域名模式，而 Cloudflare Tunnel 尚未创建，请先通过 SSH 从自己的电脑访问后台：
+
+    ssh -L 18787:127.0.0.1:18787 user@your-server
+
+浏览器打开 http://localhost:18787/admin/ 并登录，然后配置 Cloudflare 固定域名 Tunnel。安装器只在明确选择 Cloudflare 的新安装中允许该回环 Origin；它不把管理端口暴露到公网。浏览器对 localhost Secure Cookie 的例外兼容性可能不同，建议使用 Chromium/Firefox，Safari 可先临时启用 Quick Tunnel 完成配置。请勿使用网页下载的脚本或公共 HTTP URL 传输凭据。
+
 ## Quick Tunnel（仅供测试）
 打开管理后台 /admin/#tunnel，输入管理员密码后点击“启动 Quick Tunnel”。会自动识别临时 trycloudflare.com 公网地址、显示 /mcp 接入点，并同步更新 OAuth issuer 和 HTTP 允许来源。重新连接 ChatGPT 应用时必须使用新地址并完成 OAuth。
 

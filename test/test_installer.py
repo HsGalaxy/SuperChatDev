@@ -13,6 +13,18 @@ class InstallTests(unittest.TestCase):
   declared=json.loads((MODULE.parents[1]/'RELEASE.json').read_text())['files']
   self.assertGreaterEqual(len(declared),45)
   self.assertEqual(m.verify_release(),len(declared))
+ def test_cloudflare_first_boot_allows_ssh_loopback_admin_without_public_bind(self):
+  from types import SimpleNamespace
+  runner=SimpleNamespace(pw_uid=1234,pw_gid=1234)
+  ordinary=m.env_settings('mcp.example.net',18787,runner,False,'owner','admin')
+  assert ordinary['HTTP_ALLOWED_ORIGINS']==''
+  cf=m.env_settings('pending.trycloudflare.com',18787,runner,False,'owner','admin',bootstrap_quick=False,allow_local_admin=True)
+  self.assertEqual(cf['HOST'],'127.0.0.1')
+  self.assertEqual(cf['HTTP_ALLOWED_ORIGINS'],'http://localhost:18787,http://127.0.0.1:18787')
+  self.assertNotIn('TUNNEL_BOOTSTRAP_QUICK',cf)
+  quick=m.env_settings('pending.trycloudflare.com',18787,runner,False,'owner','admin',bootstrap_quick=True,allow_local_admin=True)
+  self.assertEqual(quick['TUNNEL_BOOTSTRAP_QUICK'],'true')
+
  def test_hostname_validation(self):
   self.assertEqual(m.validate_domain('MCP.Test.Example.ORG'),'mcp.test.example.org')
   for bad in ['example.com','http://example.org','localhost','127.0.0.1','a..b','evil.com/path','-bad.com']:

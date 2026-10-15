@@ -370,7 +370,7 @@ def create_credentials():
         atomic_write(target, secrets.token_urlsafe(40) + "\n")
     return (ETC / "owner-password").read_text().strip(), (ETC / "admin-password").read_text().strip()
 
-def env_settings(domain: str, port: int, runner, dc: bool, owner_pass: str, admin_pass: str, bootstrap_quick: bool = False):
+def env_settings(domain: str, port: int, runner, dc: bool, owner_pass: str, admin_pass: str, bootstrap_quick: bool = False, allow_local_admin: bool = False):
     home = str(VAR / "runtime")
     cargo = str(VAR / "workspace" / ".rust-cargo")
     execution = {"PATH": cargo + "/bin:/usr/local/bin:/usr/bin:/bin", "HOME": home,
@@ -384,7 +384,7 @@ def env_settings(domain: str, port: int, runner, dc: bool, owner_pass: str, admi
         "MCP_ADMIN_PASSWORD": admin_pass,
         "OAUTH_REDIRECT_ORIGINS": "https://chatgpt.com,https://chat.openai.com",
         "FILE_DOWNLOAD_ORIGINS": "https://files.oaiusercontent.com,https://*.blob.core.windows.net",
-        "HTTP_ALLOWED_ORIGINS": "",
+        "HTTP_ALLOWED_ORIGINS": (f"http://localhost:{port},http://127.0.0.1:{port}" if allow_local_admin else ""),
         "MAX_FILE_BYTES": str(512 * 1024 * 1024),
         "MAX_RESOURCE_BYTES": str(8 * 1024 * 1024),
         "MAX_JOBS": "4",
@@ -663,7 +663,7 @@ def fresh(args):
         if args.with_dc:
             install_dc()
         owner_pass, admin_pass=create_credentials()
-        atomic_write(ENV_FILE,render_env(env_settings(domain,port,runner,args.with_dc,owner_pass,admin_pass,bootstrap_quick=args.proxy=='cloudflare' and args.cloudflare_mode=='quick')))
+        atomic_write(ENV_FILE,render_env(env_settings(domain,port,runner,args.with_dc,owner_pass,admin_pass,bootstrap_quick=args.proxy=='cloudflare' and args.cloudflare_mode=='quick',allow_local_admin=args.proxy=='cloudflare')))
         node=shutil.which("node") or ""
         node=str(Path(node).resolve())
         atomic_write(UNIT,unit_text(node),0o644)

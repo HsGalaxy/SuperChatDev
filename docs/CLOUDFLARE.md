@@ -11,6 +11,14 @@ The standard SuperChatDev installation and upgrades never install cloudflared. W
 
 Uses Cloudflare's official signed APT repository. You can also preinstall cloudflared manually.
 
+### First-time setup without any public endpoint
+
+If you selected named Tunnel during a fresh install but have not provisioned it, SSH-forward your local Admin page:
+
+    ssh -L 18787:127.0.0.1:18787 user@your-server
+
+Open http://localhost:18787/admin/, sign in, and configure the named tunnel. Fresh Cloudflare installs allow only the local loopback HTTP Origin in addition to the public issuer; this does not open the service to the Internet. Chromium/Firefox support Secure cookies on localhost; Safari has compatibility limitations, so use an initial Quick Tunnel if local login is rejected.
+
 ## Quick Tunnel
 Navigate to /admin/#tunnel, confirm your Admin password, and start Quick. Its random trycloudflare.com URL is detected automatically; the effective OAuth issuer, allowed HTTP origins and /mcp address are synchronized. Reconnect ChatGPT after the URL changes.
 
