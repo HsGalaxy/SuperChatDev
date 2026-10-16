@@ -1,8 +1,8 @@
 {
   "version": "0.3.12",
   "files": {
-    "CHANGELOG.md": "24a3e870bcdaed214ed7c7e6fec8f1df49bfc4e4ad989255aeb35e2ba4b17c88",
-    "README.md": "804dd5e97e8b09a8088828367a1991adeec94d78d5564669cec734f7018f2b83",
+    "CHANGELOG.md": "769c9e2637316cdb0247e3539c0cb5564528267eec0c508d2b1bdf9e3610e586",
+    "README.md": "4468f202614f045004a32a2444d58550c180a5639c366f1799bde88638f38c23",
     "package.json": "a659bd58ca0c35b03469070f03ec6d4d3ce45f63e5295ffec52a474df0677cfb",
     "src/admin-files.mjs": "e9abe9394d760e21df7e8b93e52602e6d41dad85802583896c1fdf095b0d88e2",
     "src/admin.mjs": "d4eff42daaa2f934f121c4e3c605a3c4cb91cc06a65640c6151c08fca970d932",

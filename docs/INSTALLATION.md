@@ -5,9 +5,9 @@
 ## Prerequisites
 
 - Debian or Ubuntu with systemd and root/sudo access in an SSH terminal.
-- A real domain name pointed to your server and reachable public HTTPS.
+- Choose a real domain, Cloudflare Tunnel (no public IP required), or an sslip.io hostname.
 - Internet access to `raw.githubusercontent.com` and `codeload.github.com`.
-- Python 3, tar, curl, and Node.js >=22. The downloaded bootstrap can set up Python/tar with APT if root is available; the guided installer can offer signed NodeSource setup with your approval.
+- Python 3, tar, curl, and Node.js >=22. The downloaded bootstrap can set up Python/tar with APT if root is available; the guided installer automatically installs missing Node.js 22+ from the signed NodeSource repository.
 
 ## One-liner — no Git clone required
 
@@ -27,17 +27,23 @@ less superchatdev-install.sh
 sudo bash superchatdev-install.sh --lang en
 ```
 
-## Smart domain selection (fresh install)
+## Choose a connection
 
-Before asking for a domain, the installer checks the server's public IPv4 using HTTPS IP-echo endpoints, rejecting non-public, reserved and multicast addresses. The menu offers manual entry as **option 1** and `IP.sslip.io` as **option 2**. When detection succeeds, **option 2 is the suggested default**; pressing Enter selects it. If detection fails, installation can continue using a manually entered domain.
+The installer asks for one connection method:
 
-`sslip.io` is a third-party wildcard DNS service; the detected IP may represent outbound NAT rather than publicly accessible inbound traffic. Managed Caddy certificates still require DNS and inbound TCP ports 80/443. IP detection is skipped when `--domain` is specified, in unattended installations, and during Dry Run. The final confirmation defaults to **`[Y/n]`** (Enter installs, `n` cancels).
+1. **Your own domain** — enter the hostname. Managed Caddy sets up HTTPS by default.
+2. **Cloudflare Tunnel** — works without a public IP, installs cloudflared automatically, and tries to launch a temporary Quick Tunnel. Prints the real URL when available.
+3. **sslip.io** — detects a public IPv4 and generates a hostname; managed Caddy needs inbound ports 80/443.
+
+Missing Node.js 22+ is installed automatically, with no extra dependency questions. The only optional add-on question is Desktop Commander. Press Enter at the final **[Y/n]** prompt to install, or n to cancel.
+
+If you already operate an HTTPS reverse proxy, use the advanced --proxy external option.
 
 ## Fresh install
 
-Choose **Fresh install** and provide a DNS name. Choose **Managed Caddy** to configure automatic HTTPS certificates (requires working DNS and ports 80/443), or **Existing reverse proxy** if you already have Nginx/Caddy/another proxy terminating HTTPS.
+Choose **Fresh install** and select a connection method. Custom domains and sslip.io use managed Caddy by default (DNS and ports 80/443 required). Cloudflare mode installs cloudflared automatically, with no inbound ports needed. Use --proxy external if you already manage HTTPS.
 
-The backend binds to `127.0.0.1:18787` by default; don't expose it publicly. The wizard creates two low-privilege Linux service identities and separate owner/admin passwords protected under `/etc/chatgpt-dev-mcp/`. Projects live under `/var/lib/chatgpt-dev-mcp/workspace`, private state under `/var/lib/chatgpt-dev-mcp/state`. Optional Desktop Commander is disabled by default.
+The backend binds to `127.0.0.1:18787` by default; don't expose it publicly. The wizard creates two low-privilege Linux service identities and separate owner/admin passwords shown in interactive root SSH terminals and saved under `/etc/chatgpt-dev-mcp/`. Projects live under `/var/lib/chatgpt-dev-mcp/workspace`, private state under `/var/lib/chatgpt-dev-mcp/state`. Optional Desktop Commander is disabled by default.
 
 ## Upgrade without wiping data
 

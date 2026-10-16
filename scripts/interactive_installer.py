@@ -162,7 +162,7 @@ def choose_access_method():
     # Explicit recommendation order: existing domain, Cloudflare, sslip.io.
     option=choose(tr("Choose public access method:"),[
       ("1",tr("Custom HTTPS domain (recommended; Caddy or existing proxy)")),
-      ("2",tr("Cloudflare Tunnel (no public IP or inbound ports; optional cloudflared)")),
+      ("2",tr("Cloudflare Tunnel (no public IP or inbound ports; cloudflared installed automatically)")),
       ("3",tr("Automatic sslip.io hostname (requires reachable public IP)"))
     ],"1")
     if option=="2":
@@ -190,7 +190,7 @@ def ensure_cloudflared():
         return
     if not shutil.which("apt-get"):
         raise InstallError("cloudflared optional install requires Debian/Ubuntu apt; install it manually on this OS")
-    step("Installing optional cloudflared from signed official Cloudflare apt repository")
+    step("Installing cloudflared for Cloudflare Tunnel")
     import urllib.request
     uri="https://pkg.cloudflare.com/cloudflare-main.gpg"
     with urllib.request.urlopen(urllib.request.Request(uri,headers={"User-Agent":"SuperChatDev/installer"}),timeout=12) as response:
@@ -802,6 +802,23 @@ def upgrade(args=None):
                      version=VERSION,port=port))
     print(tr("Protected backup:"),backup)
 
+def print_install_credentials(owner_pass: str, admin_pass: str):
+    # A first-time install must actually hand over its generated credentials.
+    # Show them once in the operator's interactive root SSH session, never in
+    # redirected installation logs, CI output, or a non-interactive API call.
+    visible=(os.geteuid()==0 and sys.stdin.isatty() and sys.stdout.isatty())
+    print()
+    if visible:
+        print(tr("ChatGPT OAuth password:"),owner_pass)
+        print(tr("Admin password:"),admin_pass)
+        print(tr("Passwords are also saved under:"),ETC)
+    else:
+        print(tr("Passwords are saved in root-only files:"))
+        print("  sudo cat",ETC/"owner-password")
+        print("  sudo cat",ETC/"admin-password")
+    return visible
+
+
 def fresh(args):
     if UNIT.exists() or ENV_FILE.exists():
         raise InstallError("An existing installation was detected. Use upgrade mode; no overwrites.")
@@ -815,8 +832,10 @@ def fresh(args):
     domain=validate_domain(args.domain)
     port=valid_port(args.port)
     port_available(port)
+    # Selecting an installation mode also selects its required dependencies.
+    # A user should never have to guess whether cloudflared is necessary.
     ensure_prerequisites(args.auto_node)
-    if args.proxy=="cloudflare" and args.auto_cloudflared:
+    if args.proxy=="cloudflare":
         ensure_cloudflared()
     runner, owner = create_users_and_paths()
     backup=make_backup()
@@ -839,8 +858,8 @@ def fresh(args):
         start_service(port); started=True
         if args.proxy=="caddy":
             install_caddy(domain,port,backup)
-        # Cloudflare Quick bootstraps asynchronously inside the gateway after startup;
-        # no cloudflared installation or background network command is implicit.
+        # Cloudflare Quick starts automatically inside the gateway once the
+        # selected Cloudflare dependency has been installed.
     except BaseException:
         step("Installation incomplete; restoring runtime and stopping newly created unit")
         # Credentials and the environment file were absent at entry; all
@@ -887,7 +906,9 @@ def fresh(args):
         # pending.trycloudflare.com as if it were a working service.
         if args.cloudflare_mode=="quick":
             quick=VAR/"state"/"cloudflare-tunnel"/"quick-url"
-            for _ in range(40):
+            # cloudflared may legitimately need up to 20 seconds to obtain
+            # its first URL. Give it time without ever showing a fake one.
+            for _ in range(88):
                 if quick.is_file():
                     try:
                         addr=quick.read_text(encoding="ascii").strip()
@@ -897,21 +918,26 @@ def fresh(args):
                             break
                     except (OSError,UnicodeError):pass
                 time.sleep(0.25)
-        print(tr("Cloudflare mode selected: see Admin → Cloudflare Tunnel for live address and OAuth status"))
         if not public_ready:
-            print(tr("Public Tunnel is not ready. Do not use the placeholder hostname. Check journalctl -u chatgpt-dev-mcp or SSH-forward 18787 to configure a named Tunnel."))
+            print(tr("Cloudflare is still starting. To get the URL later:"))
+            print("  sudo cat",VAR/"state"/"cloudflare-tunnel"/"quick-url")
+            print(tr("For connection errors:"))
+            print("  sudo journalctl -u chatgpt-dev-mcp -n 40 --no-pager")
     if public_ready:
         print(tr("MCP endpoint:"), "https://"+domain+"/mcp")
         print(tr("Admin console:"), "https://"+domain+"/admin/")
-    print(tr("HTTPS mode:"), args.proxy)
-    if args.proxy=="cloudflare":
-        print(tr("Cloudflare Tunnel needs outbound connectivity, not inbound 80/443. Use Admin to configure Quick or named Tunnel and verify the public OAuth issuer."))
+    elif args.proxy=="cloudflare" and args.cloudflare_mode=="named":
+        print(tr("Open Admin via SSH port forwarding to configure the named tunnel:"))
+        print("  ssh -L 18787:127.0.0.1:18787 root@YOUR_SERVER")
+    printed=print_install_credentials(owner_pass,admin_pass)
+    if public_ready:
+        if printed:
+            print(tr("Next: ChatGPT Settings → Apps → Create, paste the MCP URL, and authorize with the OAuth password above."))
+        else:
+            print(tr("Next: ChatGPT Settings → Apps → Create, paste the MCP URL, and authorize with the saved OAuth password."))
     else:
-        print(tr("Domain DNS must resolve here and ports 80/443 must be reachable for Caddy TLS."))
-    print(tr("Owner and admin passwords are stored separately in root-only files under"), ETC)
-    print(tr("To reveal a password locally, use a root SSH terminal; never paste secrets in chat."))
-    print(tr("Private release backup:"), backup)
-    print(tr("Next: register the HTTPS MCP app in ChatGPT; refresh/review/publish its actions."))
+        print(tr("Next: get your tunnel URL above, then add it in ChatGPT Settings → Apps."))
+    print(tr("Saved private backup:"),backup)
 
 def main():
     parser=argparse.ArgumentParser(
@@ -927,8 +953,9 @@ def main():
                         help="接入方式 / custom preferred, Cloudflare second, sslip third")
     parser.add_argument("--cloudflare-mode",choices=["quick","named"],default="quick",
                         help="Cloudflare Quick testing or remotely-managed named tunnel")
+    # Backward-compatible alias; Cloudflare mode ALWAYS installs its required binary.
     parser.add_argument("--auto-cloudflared",action="store_true",
-                        help="Explicitly opt in to installing cloudflared only when using Cloudflare")
+                        help=argparse.SUPPRESS)
     parser.add_argument("--apply-resource-limits",action="store_true",
                         help="Explicitly migrate existing systemd TasksMax/MemoryMax via backed-up managed drop-in")
     parser.add_argument("--enable-isolated-runner",action="store_true",
@@ -939,8 +966,10 @@ def main():
                         help="本地端口 / loopback port")
     parser.add_argument("--with-dc",action="store_true",
                         help="同时安装可选 Desktop Commander / optional bridge")
-    parser.add_argument("--auto-node",action="store_true",
-                        help="允许从有签名的 NodeSource 源安装 Node 22+")
+    # Node.js 22+ is a hard prerequisite. On a fresh Debian/Ubuntu install,
+    # automatically install it from NodeSource when missing.
+    parser.add_argument("--auto-node",action="store_true",default=True,
+                        help=argparse.SUPPRESS)
     parser.add_argument("--yes",action="store_true",
                         help="明确允许非交互安装（需同时提供 --mode）")
     parser.add_argument("--dry-run",action="store_true",
@@ -967,7 +996,8 @@ def main():
         if os.geteuid()!=0:raise InstallError("Optional cloudflared installation requires root SSH")
         if not args.yes and not sys.stdin.isatty():
             raise InstallError("Explicit --yes is required for unattended cloudflared installation")
-        if not args.yes and not confirm(tr("Install optional cloudflared now?"),False):return 0
+        # --install-cloudflared is already an explicit operator selection.
+        # Do not ask a second question to confirm the same choice.
         ensure_cloudflared()
         return 0
     if args.mode=="check":
@@ -1011,28 +1041,24 @@ def main():
             raise InstallError("--proxy cloudflare requires --access-method cloudflare")
         valid_port(args.port)
         if not args.proxy:
-            if args.dry_run or not sys.stdin.isatty(): args.proxy="external"
-            else:
-                args.proxy={"1":"caddy","2":"external"}[choose(tr("HTTPS proxy:"),[
-                    ("1",tr("Managed Caddy (automated ACME TLS, ports 80/443)")),
-                    ("2",tr("Existing proxy (you will configure HTTPS separately)"))],"1")]
-        if not args.dry_run and sys.stdin.isatty():
-            if args.proxy=="cloudflare" and not args.auto_cloudflared:
-                args.auto_cloudflared=confirm(tr("Install optional cloudflared now?"),False)
-            if not args.with_dc:
-                args.with_dc=confirm(tr("Install optional Desktop Commander bridge?"), False)
-            if node_version()<22 and not args.auto_node:
-                args.auto_node=confirm(
-                    tr("Node >=22 missing. Configure signed NodeSource APT repo?"), False)
+            # Connection choice determines the usual HTTPS default; a separate
+            # reverse-proxy question does not help first-time users.
+            # Operators with existing HTTPS can still pass --proxy external.
+            args.proxy="caddy"
+        # This is the only optional add-on question. Runtime dependencies
+        # follow the selected connection mode and install automatically.
+        args.auto_cloudflared=args.proxy=="cloudflare"
+        if not args.dry_run and sys.stdin.isatty() and not args.with_dc:
+            args.with_dc=confirm(tr("Install optional Desktop Commander bridge?"), False)
     count=verify_release()
     print("\n"+tr("Core MCP v{version}; release checksum verified: {count} files",
                  version=VERSION,count=count))
     print(tr("Action:"),args.mode,"|",tr("target:"),APP)
     if args.mode=="fresh":
         print(tr("Domain:"),args.domain,"|",tr("HTTPS proxy:"),args.proxy,
-              "|",tr("optional cloudflared:"),args.auto_cloudflared,
-              "|",tr("backend port:"),args.port,"|",tr("optional DC:"),args.with_dc,
-              "|",tr("permit NodeSource:"),args.auto_node)
+              "|",tr("cloudflared:"),"auto" if args.proxy=="cloudflare" else "not needed",
+              "|",tr("backend port:"),args.port,"|",tr("Desktop Commander:"),args.with_dc,
+              "|",tr("Node.js 22+:"),"auto if needed")
         print(tr("Will create two unprivileged service accounts, protected credentials and persistent workspace."))
     else:
         print(tr("Upgrade runtime only; keep existing systemd unit, credentials, state and proxy."))

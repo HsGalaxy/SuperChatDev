@@ -5,7 +5,7 @@
 v0.3.11 推荐顺序：**自定义 HTTPS 域名（首选） > Cloudflare Tunnel（第二） > sslip.io（第三）**。Tunnel 适合无公网 IP、NAT 后面的机器，无需开放入站 80/443。网络仍需允许向 Cloudflare 的 7844 TCP/UDP 出站。
 
 ## 按需安装
-SuperChatDev 的正常安装、升级和启动绝不会自动下载 cloudflared；只有用户显式选择才安装。后台没有执行 sudo/apt 的权限。Debian/Ubuntu SSH 可运行：
+选择 Cloudflare Tunnel 首次安装时，会自动安装 cloudflared；选择其他接入方式时不安装。普通升级不会额外安装它。后台没有执行 sudo/apt 的权限。Debian/Ubuntu SSH 可运行：
 
     curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh | sudo bash -s -- --install-cloudflared --yes
 
@@ -22,7 +22,7 @@ SuperChatDev 的正常安装、升级和启动绝不会自动下载 cloudflared�
 ## Quick Tunnel（仅供测试）
 打开管理后台 /admin/#tunnel，输入管理员密码后点击“启动 Quick Tunnel”。会自动识别临时 trycloudflare.com 公网地址、显示 /mcp 接入点，并同步更新 OAuth issuer 和 HTTP 允许来源。重新连接 ChatGPT 应用时必须使用新地址并完成 OAuth。
 
-新的服务器安装向导中，可以选择第二推荐的 Cloudflare 模式；只有在明确同意安装 cloudflared 后，才自动尝试第一次 Quick 启动（公网地址会出现在后台和日志）。命令行也可明确选择 --access-method cloudflare --cloudflare-mode quick --auto-cloudflared。
+新的服务器安装向导中，可以选择第二推荐的 Cloudflare 模式；选择 Cloudflare 后自动安装 cloudflared 并尝试第一次 Quick 启动（公网地址会出现在后台和日志）。命令行也可明确选择 --access-method cloudflare --cloudflare-mode quick。
 
 **临时地址会变化，没有 SLA，有 200 个在途请求上限，不支持 SSE。长期使用请改固定域名。**
 

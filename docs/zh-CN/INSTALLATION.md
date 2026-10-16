@@ -6,9 +6,9 @@
 
 - Debian/Ubuntu（使用 systemd），具备 root 或 sudo 权限。
 - 可通过 HTTPS 下载 GitHub 源码；推荐 SSH 登录操作。
-- 用于 ChatGPT 接入的**真实域名**；DNS 记录应指向此服务器。
+- 已有域名、公网 IPv4 或 Cloudflare Tunnel 均可接入；没有公网 IP 可选 Cloudflare。
 - 自动 HTTPS（Caddy）通常需要开放 80 和 443；如果已经部署 Nginx、Caddy 或其他代理，请选择**使用现有代理**。
-- Python 3、tar、curl 和 Node.js 22+。下载引导器可补齐 tar/Python 3；安装向导经确认可安装 Node.js。Core 本身不强制安装 npm 插件。
+- Python 3、tar、curl 和 Node.js 22+。下载引导器可补齐 tar/Python 3；缺少 Node.js 时自动配置签名 NodeSource 软件源并安装。Core 本身不强制安装 npm 插件。
 
 ## 2. 最简单的一行
 
@@ -16,7 +16,7 @@
 curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.sh | sudo bash
 ```
 
-安装向导默认简体中文，也可选择 English。选择新装后，提供域名，选择 HTTPS 方式；根据提示决定是否附加 Desktop Commander。安装器会创建受限系统身份、工作区、私有状态和 systemd 服务，并验证 `/health`。
+安装向导默认简体中文，也可选择 English。选择新装后，只需选择接入方式：已有域名、Cloudflare Tunnel 或 sslip.io。Cloudflare 自动安装 cloudflared；域名/sslip.io 默认配置 Caddy。可选择是否附加 Desktop Commander。安装器会创建受限系统身份、工作区、私有状态和 systemd 服务，并验证 `/health`。
 
 **安全提示：** 这是从 GitHub 经 HTTPS 获取并以 root 执行代码。请确认仓库可信。要审查脚本，先运行：
 
@@ -26,22 +26,19 @@ less superchatdev-install.sh
 sudo bash superchatdev-install.sh
 ```
 
-直接运行从 GitHub 下载的单文件脚本同样可以安装，它会先获取完整源码。安装向导不会把真实凭据打印到终端。
+直接运行从 GitHub 下载的单文件脚本同样可以安装，它会先获取完整源码。首次安装成功后，在交互式 root SSH 终端会直接显示 OAuth 与 Admin 密码；非交互安装仅提供凭据文件路径。
 
-## 3. 智能域名选择（首次安装）
+## 3. 选择接入方式
 
-向导会先尝试通过 HTTPS 检测当前机器的公网 IPv4，例如 `1.2.3.4`，再询问：
+向导只问你需要哪种访问方式：
 
-```text
-请选择 MCP 域名：
-  1. 手动输入域名（已有域名）
-  2. 自动推荐：1.2.3.4.sslip.io（无需注册域名）
-请选择 [2]：
-```
+1. **已有域名**：填写域名，默认使用 Caddy 自动配置 HTTPS。
+2. **Cloudflare Tunnel**：无需公网 IP，自动安装 cloudflared 并尝试启动临时 Quick Tunnel；成功后输出真实 MCP URL。
+3. **sslip.io**：自动检测公网 IPv4 并生成域名，默认使用 Caddy。需要公网入站 80/443 能到达本机。
 
-**第二项是默认推荐，回车即可选用。** 你也可以选择 `1`，手动输入已有域名；若自动 IP 检测失败，安装器不会退出，而是进入手动输入。检测服务无法识别内网/组播/保留 IP 为可用的公网地址。自动检测不在升级、Dry Run 或已经指定 `--domain` 的自动化安装里执行。
+缺少 Node.js 22+ 会自动安装。已安装的依赖直接跳过。安装器也会问是否需要额外的 Desktop Commander；不需要可直接回车。最后确认 **[Y/n]**：回车开始安装，输入 n 取消。
 
-`sslip.io` 的 DNS 服务由第三方提供，自动查询公网地址时第三方查询服务也会看到服务器的出口 IP。检测 IP 可能是 NAT/代理出口，因此选用推荐域名前，需要确认 80/443 公网入站流量真的能够抵达该 VPS。最终确认 **`[Y/n]`**：回车继续，输入 `n` 取消，不会静默安装。
+已有 HTTPS 反向代理的用户可通过高级参数 --proxy external 使用原来的代理，无需修改 Caddy。
 
 ## 4. 英文与自动化
 
@@ -64,7 +61,7 @@ curl -fsSL https://raw.githubusercontent.com/HsGalaxy/SuperChatDev/main/install.
 - 默认监听 `127.0.0.1:18787`，不应将后端 HTTP 端口直接开放到公网。
 - **Caddy 模式**：修改由安装器管理的站点配置，验证后启动或热加载；遇到已有冲突域名会拒绝覆盖。
 - **现有代理模式**：保留你的反向代理，由你自己将 HTTPS 流量转发至 `127.0.0.1:18787`。代理不能错误重写 OAuth 路径，最好不要记录带查询参数的授权码或签名下载 URL。
-- 创建 OAuth 与后台两份独立随机密码，文件位于 `/etc/chatgpt-dev-mcp/`，仅 root 能访问。
+- 创建 OAuth 与后台两份独立随机密码，交互式 root SSH 安装成功后直接显示；文件位于 `/etc/chatgpt-dev-mcp/`，仅 root 能访问。
 - 工作区在 `/var/lib/chatgpt-dev-mcp/workspace`，状态在 `/var/lib/chatgpt-dev-mcp/state`。
 
 ## 6. 升级模式

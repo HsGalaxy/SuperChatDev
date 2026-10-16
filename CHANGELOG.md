@@ -2,6 +2,9 @@
 
 ## 0.3.12 — Reliable large-project execution and resource isolation
 
+- Onboarding UX: selecting Cloudflare automatically installs cloudflared, other connection modes never install it, and missing Node.js 22+ is installed automatically. Managed Caddy is the normal default for custom/sslip addresses; existing reverse proxies remain opt-in.
+- The fresh-install success screen prints the real MCP/Admin URL and displays both generated passwords in interactive root SSH terminals, with protected file access instructions in unattended mode. Simplify both READMEs and quickstart guides around the first user journey instead of long legalistic comparisons.
+
 - Hotfix: optional cloudflared installation now writes binary Cloudflare GPG keyrings byte-for-byte, fixing the previous TypeError on Debian 13/Ubuntu. Add offline regression tests for the official APT source, 0644 permissions, optional-install idempotency and oversized-key rejection.
 - New install defaults of TasksMax=1024 and MemoryMax=4G. Existing units unchanged unless explicitly applying --apply-resource-limits; backups and automatic rollback cover managed drop-ins and service configuration.
 - Opt-in sibling systemd Runner with private 0600 Unix IPC and 768 tasks / 4G; control plane 512 tasks / 2G in isolated mode. Durable jobs, workspace batches and quick commands offload without changing IDs, logs, cancellation, or request_id replay safeguards. No privilege escalation through Admin.

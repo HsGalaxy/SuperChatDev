@@ -49,3 +49,23 @@ ZH.update({
 ZH.update({
   "Public Tunnel is not ready. Do not use the placeholder hostname. Check journalctl -u chatgpt-dev-mcp or SSH-forward 18787 to configure a named Tunnel.": "公网 Tunnel 尚未就绪，请勿使用占位域名。检查 journalctl -u chatgpt-dev-mcp，或通过 SSH 转发本机 18787 端口配置固定域名 Tunnel。"
 })
+
+# Friendly fresh-install summary (keep the user journey separate from diagnostics).
+ZH.update({
+  "Cloudflare Tunnel (no public IP or inbound ports; cloudflared installed automatically)": "Cloudflare Tunnel（无需公网 IP，自动安装 cloudflared）",
+  "ChatGPT OAuth password:": "ChatGPT OAuth 登录密码：",
+  "Admin password:": "管理员后台密码：",
+  "Passwords are also saved under:": "密码同时保存在：",
+  "Passwords are saved in root-only files:": "密码已保存，请在 SSH 终端读取：",
+  "Cloudflare is still starting. To get the URL later:": "Cloudflare 地址正在生成，可稍后运行：",
+  "For connection errors:": "连接失败时查看日志：",
+  "Open Admin via SSH port forwarding to configure the named tunnel:": "通过 SSH 端口转发打开管理后台，配置固定域名 Tunnel：",
+  "Next: ChatGPT Settings → Apps → Create, paste the MCP URL, and authorize with the OAuth password above.": "下一步：ChatGPT 设置 → 应用 → 创建，粘贴 MCP 地址，使用上面的 OAuth 密码授权。",
+  "Next: get your tunnel URL above, then add it in ChatGPT Settings → Apps.": "下一步：获取 Cloudflare 地址后，在 ChatGPT 设置 → 应用中添加。",
+  "Saved private backup:": "备份目录：",
+  "cloudflared:": "cloudflared：",
+  "Installing cloudflared for Cloudflare Tunnel": "正在为 Cloudflare Tunnel 安装 cloudflared",
+  "Desktop Commander:": "Desktop Commander：",
+  "Node.js 22+:": "Node.js 22+：",
+  "Next: ChatGPT Settings → Apps → Create, paste the MCP URL, and authorize with the saved OAuth password.": "下一步：ChatGPT 设置 → 应用 → 创建，粘贴 MCP 地址，再用保存的 OAuth 密码授权。",
+})
